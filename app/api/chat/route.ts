@@ -168,7 +168,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const retrieverMsg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
+      max_tokens: 1400,
       system: RETRIEVER_SYSTEM_PROMPT,
       messages: [{ role: "user", content: retrieverUserMessage }],
     });
@@ -220,8 +220,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let answer: string;
   try {
     const orchestratorMsg = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1400,
+      model: "claude-sonnet-4-5-20251022",
+      max_tokens: 3000,
       system: orchestratorSystem,
       messages: orchestratorMessages,
     });

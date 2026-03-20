@@ -25,7 +25,7 @@ interface Product {
 type Tab = "upload" | "chunks" | "products";
 
 const PRODUCTS = [
-  { id: "catastrofi-naturali-impresa", name: "Catastrofi naturali Impresa" },
+  { id: "a986fcdc-a745-4cc2-848c-165477b1fbf3", name: "Catastrofi naturali Impresa" },
   { id: "ultrai-salute", name: "UltrAI Salute" },
   { id: "casa-patrimonio", name: "Casa e Patrimonio" },
 ];

@@ -295,11 +295,9 @@ export default function ChatArea({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          question: text,
           productId,
-          messages: [
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: text },
-          ],
+          history: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
 

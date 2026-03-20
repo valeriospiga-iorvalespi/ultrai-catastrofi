@@ -17,10 +17,10 @@ interface ChatShellProps {
 }
 
 export default function ChatShell({ userName }: ChatShellProps) {
-  const supabase = createClientComponentClient(
+  const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+  );
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);

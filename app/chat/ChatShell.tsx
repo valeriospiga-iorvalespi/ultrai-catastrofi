@@ -231,7 +231,7 @@ export default function ChatShell({ userName }: ChatShellProps) {
           onSelect={handleSelect}
         />
         <ChatArea
-          productId="catastrofi-naturali-impresa"
+          productId="a986fcdc-a745-4cc2-848c-165477b1fbf3"
           conversationId={activeId ?? undefined}
           onConversationUpdate={handleConversationUpdate}
         />

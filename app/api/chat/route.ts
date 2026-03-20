@@ -168,7 +168,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const retrieverMsg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1400,
+      max_tokens: 300,
       system: RETRIEVER_SYSTEM_PROMPT,
       messages: [{ role: "user", content: retrieverUserMessage }],
     });
@@ -189,6 +189,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     selectedIndices.length > 0
       ? selectedIndices
           .filter((i) => i < allChunks.length)
+          .slice(0, 5)
           .map((i) => allChunks[i])
       : [];
   const selectedChunkIds = selectedChunks.map((c) => c.chunk_id);
@@ -221,7 +222,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const orchestratorMsg = await anthropic.messages.create({
       model: "claude-sonnet-4-5-20251022",
-      max_tokens: 3000,
+      max_tokens: 1500,
       system: orchestratorSystem,
       messages: orchestratorMessages,
     });

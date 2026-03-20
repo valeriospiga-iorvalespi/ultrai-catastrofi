@@ -23,6 +23,7 @@ export default function ChatShell({ userName }: ChatShellProps) {
   );
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [modal, setModal] = useState<"profilo" | "impostazioni" | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -186,8 +187,8 @@ export default function ChatShell({ userName }: ChatShellProps) {
                 }}
               >
                 {[
-                  { label: "👤 Profilo", action: () => setMenuOpen(false) },
-                  { label: "⚙️ Impostazioni", action: () => setMenuOpen(false) },
+                  { label: "👤 Profilo", action: () => { setModal("profilo"); setMenuOpen(false); } },
+                  { label: "⚙️ Impostazioni", action: () => { setModal("impostazioni"); setMenuOpen(false); } },
                   { label: "📊 Admin", action: () => { router.push("/admin"); setMenuOpen(false); } },
                   { label: "🚪 Esci", action: handleLogout, danger: true as const },
                 ].map((item) => (
@@ -267,6 +268,90 @@ export default function ChatShell({ userName }: ChatShellProps) {
           </span>
         ))}
       </footer>
+
+
+      {/* ─── MODAL PROFILO ─── */}
+      {modal === "profilo" && (
+        <>
+          <div onClick={() => setModal(null)}
+            style={{ position:"fixed", inset:0, zIndex:299, background:"rgba(0,0,0,0.3)" }} />
+          <div style={{ position:"fixed", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+            zIndex:300, background:"#fff", borderRadius:12, padding:28, minWidth:320,
+            boxShadow:"0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+              <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:"#003781" }}>👤 Profilo</h3>
+              <button onClick={() => setModal(null)}
+                style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#888" }}>×</button>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+              <div style={{ width:52, height:52, borderRadius:"50%", background:"#003781",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:20, color:"#fff", fontWeight:700 }}>
+                {firstName.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div style={{ fontWeight:600, fontSize:15, color:"#2c3e50" }}>{userName}</div>
+                <div style={{ fontSize:12, color:"#888", marginTop:3 }}>Agente Allianz</div>
+              </div>
+            </div>
+            <div style={{ borderTop:"1px solid #f0f0f0", paddingTop:14 }}>
+              <div style={{ fontSize:13, color:"#888", marginBottom:6 }}>Sessione attiva</div>
+              <div style={{ fontSize:13, color:"#2c3e50", fontFamily:"monospace",
+                background:"#f5f7fa", padding:"6px 10px", borderRadius:6 }}>
+                {greeting}, {firstName}
+              </div>
+            </div>
+            <button onClick={() => setModal(null)}
+              style={{ marginTop:20, width:"100%", background:"#003781", color:"#fff",
+                border:"none", borderRadius:8, padding:"10px 0", fontSize:14,
+                fontWeight:600, cursor:"pointer" }}>
+              Chiudi
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ─── MODAL IMPOSTAZIONI ─── */}
+      {modal === "impostazioni" && (
+        <>
+          <div onClick={() => setModal(null)}
+            style={{ position:"fixed", inset:0, zIndex:299, background:"rgba(0,0,0,0.3)" }} />
+          <div style={{ position:"fixed", top:"50%", left:"50%", transform:"translate(-50%,-50%)",
+            zIndex:300, background:"#fff", borderRadius:12, padding:28, minWidth:340,
+            boxShadow:"0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+              <h3 style={{ margin:0, fontSize:16, fontWeight:700, color:"#003781" }}>⚙️ Impostazioni</h3>
+              <button onClick={() => setModal(null)}
+                style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#888" }}>×</button>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {[
+                { label:"📊 Pannello Admin", desc:"Gestisci normativo e configurazione", action: () => { router.push("/admin"); setModal(null); } },
+                { label:"🗑️ Cancella storico chat", desc:"Rimuove tutte le conversazioni salvate localmente", action: () => { localStorage.removeItem("ultrai_cni_history"); window.location.reload(); } },
+              ].map((item) => (
+                <button key={item.label} onClick={item.action}
+                  style={{ background:"#f8fafd", border:"1px solid #e8ecf0", borderRadius:8,
+                    padding:"12px 14px", textAlign:"left", cursor:"pointer",
+                    transition:"background 0.15s" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background="#e8f0fb")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background="#f8fafd")}>
+                  <div style={{ fontWeight:600, fontSize:13.5, color:"#2c3e50" }}>{item.label}</div>
+                  <div style={{ fontSize:12, color:"#888", marginTop:3 }}>{item.desc}</div>
+                </button>
+              ))}
+              <button onClick={() => { handleLogout(); setModal(null); }}
+                style={{ background:"#fff0f0", border:"1px solid #f5c1c1", borderRadius:8,
+                  padding:"12px 14px", textAlign:"left", cursor:"pointer",
+                  transition:"background 0.15s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background="#ffe0e0")}
+                onMouseLeave={(e) => (e.currentTarget.style.background="#fff0f0")}>
+                <div style={{ fontWeight:600, fontSize:13.5, color:"#c0392b" }}>🚪 Esci</div>
+                <div style={{ fontSize:12, color:"#e07070", marginTop:3 }}>Disconnetti l&apos;account corrente</div>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Chiudi menu cliccando fuori */}
       {menuOpen && (

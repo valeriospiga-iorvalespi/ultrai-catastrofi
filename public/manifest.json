@@ -1,0 +1,13 @@
+{
+  "name": "UltrAI Catastrofi naturali Impresa",
+  "short_name": "UltrAI CNI",
+  "start_url": "/chat",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#003781",
+  "icons": [{
+    "src": "/allianz-logo.png",
+    "sizes": "192x192",
+    "type": "image/png"
+  }]
+}

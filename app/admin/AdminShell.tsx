@@ -22,7 +22,7 @@ interface Product {
   last_updated: string;
 }
 
-type Tab = "upload" | "chunks" | "products";
+type Tab = "upload" | "chunks" | "products" | "config";
 
 const PRODUCTS = [
   { id: "a986fcdc-a745-4cc2-848c-165477b1fbf3", name: "Catastrofi naturali Impresa" },
@@ -54,6 +54,17 @@ export default function AdminShell() {
   // Products state
   const [products, setProducts] = useState<Product[]>([]);
 
+  // Config state
+  const [config, setConfig] = useState({
+    persona: "",
+    domain: "",
+    guardrails: "",
+    language: "",
+  });
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configMsg, setConfigMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   const fetchChunks = useCallback(async () => {
     setChunksLoading(true);
     try {
@@ -81,7 +92,51 @@ export default function AdminShell() {
   useEffect(() => {
     if (tab === "chunks") fetchChunks();
     if (tab === "products") fetchProducts();
+    if (tab === "config") fetchConfig();
   }, [tab, fetchChunks, fetchProducts]);
+
+
+  const fetchConfig = useCallback(async () => {
+    setConfigLoading(true);
+    try {
+      const res = await fetch(`/api/admin/config?productId=${PRODUCTS[0].id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setConfig({
+          persona: data.persona ?? "",
+          domain: data.domain ?? "",
+          guardrails: data.guardrails ?? "",
+          language: data.language ?? "",
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setConfigLoading(false);
+    }
+  }, []);
+
+  const handleSaveConfig = async () => {
+    setConfigSaving(true);
+    setConfigMsg(null);
+    try {
+      const res = await fetch("/api/admin/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: PRODUCTS[0].id, ...config }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setConfigMsg({ ok: true, text: "Configurazione salvata correttamente." });
+      } else {
+        setConfigMsg({ ok: false, text: data.error ?? "Errore nel salvataggio." });
+      }
+    } catch {
+      setConfigMsg({ ok: false, text: "Errore di rete." });
+    } finally {
+      setConfigSaving(false);
+    }
+  };
 
   const handleUpload = async () => {
     if (!file) return;
@@ -207,6 +262,7 @@ export default function AdminShell() {
               { id: "upload", label: "⬆️ Upload documento" },
               { id: "chunks", label: "📄 Chunk indicizzati" },
               { id: "products", label: "📦 Prodotti" },
+              { id: "config", label: "⚙️ Configurazione" },
             ] as const
           ).map((t) => (
             <button
@@ -641,6 +697,116 @@ export default function AdminShell() {
           </div>
         )}
       </div>
+
+
+        {tab === "config" && (
+          <div style={{ maxWidth: 680 }}>
+            <div style={{ marginBottom: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: "#2c3e50", marginBottom: 6 }}>
+                Configurazione assistente
+              </h3>
+              <p style={{ fontSize: 13, color: "#888", lineHeight: 1.6 }}>
+                Personalizza il comportamento dell&apos;assistente per il prodotto{" "}
+                <strong>Catastrofi naturali Impresa</strong>.
+                Lascia vuoto per usare i valori di default.
+              </p>
+            </div>
+
+            {configLoading ? (
+              <div style={{ color: "#888", fontSize: 13 }}>Caricamento...</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {[
+                  {
+                    key: "persona" as const,
+                    label: "Persona",
+                    placeholder: "Es. Sei UltrAI Catastrofi naturali Impresa, assistente per agenti assicurativi Allianz...",
+                    hint: "Definisce il ruolo e il tono dell'assistente.",
+                    rows: 4,
+                  },
+                  {
+                    key: "domain" as const,
+                    label: "Dominio / Contesto prodotto",
+                    placeholder: "Es. Il prodotto copre danni causati da sisma, alluvione, frana...",
+                    hint: "Descrive il prodotto e le sue caratteristiche principali.",
+                    rows: 5,
+                  },
+                  {
+                    key: "guardrails" as const,
+                    label: "Guardrail aggiuntivi",
+                    placeholder: "Es. Non rispondere a domande su altri prodotti Allianz...",
+                    hint: "Regole aggiuntive di comportamento (si sommano a quelle di default).",
+                    rows: 4,
+                  },
+                  {
+                    key: "language" as const,
+                    label: "Lingua e stile",
+                    placeholder: "Es. Usa italiano formale. Risposte strutturate con elenchi puntati...",
+                    hint: "Lingua, registro e formato delle risposte.",
+                    rows: 3,
+                  },
+                ].map((field) => (
+                  <div key={field.key}>
+                    <label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "#2c3e50", marginBottom: 4 }}>
+                      {field.label}
+                    </label>
+                    <p style={{ fontSize: 12, color: "#9aa5b4", marginBottom: 6 }}>{field.hint}</p>
+                    <textarea
+                      value={config[field.key]}
+                      onChange={(e) => setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                      placeholder={field.placeholder}
+                      rows={field.rows}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        border: "1px solid #dde3ec",
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                        fontSize: 13,
+                        fontFamily: "inherit",
+                        color: "#2c3e50",
+                        lineHeight: 1.6,
+                        resize: "vertical",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                ))}
+
+                {configMsg && (
+                  <div style={{
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    background: configMsg.ok ? "#f0fff4" : "#fff0f0",
+                    color: configMsg.ok ? "#1a7a3a" : "#8b1a1a",
+                    border: `1px solid ${configMsg.ok ? "#9fe0b0" : "#f5c1c1"}`,
+                  }}>
+                    {configMsg.ok ? "✓ " : "✗ "}{configMsg.text}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveConfig}
+                  disabled={configSaving}
+                  style={{
+                    background: configSaving ? "#c8d4e8" : "#003781",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "10px 24px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: configSaving ? "not-allowed" : "pointer",
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  {configSaving ? "Salvataggio..." : "💾 Salva configurazione"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

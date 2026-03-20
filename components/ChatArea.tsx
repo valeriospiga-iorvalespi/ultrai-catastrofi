@@ -25,6 +25,46 @@ interface ChatAreaProps {
   onConversationUpdate?: (id: string, title: string) => void;
 }
 
+
+// Renderizza il testo trasformando {{chunk_id}} in badge gialli cliccabili
+function renderContent(text: string, onCitationClick: (id: string) => void): React.ReactNode {
+  const parts = text.split(/(\{\{[^}]+\}\})/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^\{\{([^}]+)\}\}$/);
+    if (match) {
+      const chunkId = match[1].trim();
+      return (
+        <span
+          key={i}
+          onClick={() => onCitationClick(chunkId)}
+          title={`Apri fonte: ${chunkId}`}
+          style={{
+            display: "inline-block",
+            background: "#fff3cd",
+            border: "1px solid #ffc107",
+            borderRadius: 4,
+            padding: "1px 6px",
+            fontSize: 11,
+            fontWeight: 600,
+            color: "#856404",
+            cursor: "pointer",
+            marginLeft: 2,
+            marginRight: 2,
+            verticalAlign: "middle",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#ffe69c")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "#fff3cd")}
+        >
+          [{chunkId.split("-").slice(-2).join("-")}]
+        </span>
+      );
+    }
+    // Testo normale — preserva a capo
+    return <span key={i} style={{ whiteSpace: "pre-wrap" }}>{part}</span>;
+  });
+}
+
 function TypingIndicator() {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:4, padding:"12px 16px",
@@ -85,11 +125,12 @@ function SourcesPanel({ chunks, onClose }: { chunks: ChunkDetail[]; onClose: () 
   );
 }
 
-function AssistantBubble({ message, onCopy, onExport, onShowSources }: {
+function AssistantBubble({ message, onCopy, onExport, onShowSources, onCitationClick }: {
   message: Message;
   onCopy: (t: string) => void;
   onExport: (t: string) => void;
   onShowSources: (ids: string[]) => void;
+  onCitationClick: (chunkId: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<null | "up" | "down">(null);
@@ -111,7 +152,7 @@ function AssistantBubble({ message, onCopy, onExport, onShowSources }: {
           </div>
           <span style={{ fontSize:12, fontWeight:600, color:"#003781" }}>UltrAI</span>
         </div>
-        <div style={{ whiteSpace:"pre-wrap" }}>{message.content}</div>
+        <div style={{ lineHeight:1.6 }}>{renderContent(message.content, onCitationClick)}</div>
       </div>
 
       <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:6, paddingLeft:4, flexWrap:"wrap" }}>
@@ -279,7 +320,8 @@ export default function ChatArea({ productId, conversationId, onConversationUpda
         {messages.map((msg) =>
           msg.role === "user" ? <UserBubble key={msg.id} message={msg} /> : (
             <AssistantBubble key={msg.id} message={msg}
-              onCopy={handleCopy} onExport={handleExport} onShowSources={handleShowSources} />
+              onCopy={handleCopy} onExport={handleExport} onShowSources={handleShowSources}
+              onCitationClick={(chunkId) => handleShowSources([chunkId])} />
           )
         )}
         {loading && <div style={{ marginBottom:12 }}><TypingIndicator /></div>}

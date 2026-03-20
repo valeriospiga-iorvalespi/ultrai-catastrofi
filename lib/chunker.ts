@@ -366,16 +366,16 @@ export async function chunkDocxBuffer(buffer: Buffer): Promise<Chunk[]> {
     { buffer },
     {
       styleMap: [
-        "p[style-name='Titolo1'] => h1",
-        "p[style-name='Titolo2'] => h2",
-        "p[style-name='Titolo3'] => h3",
+        "p[style-name='_Titolo 1'] => h1",
+        "p[style-name='_Titolo 2'] => h2",
+        "p[style-name='_Titolo 3'] => h3",
         "p[style-name='elenco10'] => ul > li",
-        "p[style-name='ListParagraph'] => ul > li",
-        "p[style-name='Paragrafoelenco10'] => ul > li",
-        "p[style-name='Paragrafoelenco1'] => ul > li",
-        "p[style-name='TOC1'] => p.skip",
-        "p[style-name='TOC2'] => p.skip",
-        "p[style-name='PlainText'] => p.skip",
+        "p[style-name='List Paragraph'] => ul > li",
+        "p[style-name='Paragrafo elenco1'] => ul > li",
+        "p[style-name='Paragrafo elenco1'] => ul > li",
+        "p[style-name='toc 1'] => p.skip",
+        "p[style-name='toc 2'] => p.skip",
+        "p[style-name='Plain Text'] => p.skip",
       ],
     }
   );

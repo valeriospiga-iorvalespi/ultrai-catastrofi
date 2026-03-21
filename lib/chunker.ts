@@ -372,7 +372,6 @@ export async function chunkDocxBuffer(buffer: Buffer): Promise<Chunk[]> {
         "p[style-name='elenco10'] => ul > li",
         "p[style-name='List Paragraph'] => ul > li",
         "p[style-name='Paragrafo elenco1'] => ul > li",
-        "p[style-name='Paragrafo elenco1'] => ul > li",
         "p[style-name='toc 1'] => p.skip",
         "p[style-name='toc 2'] => p.skip",
         "p[style-name='Plain Text'] => p.skip",

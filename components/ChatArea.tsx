@@ -26,43 +26,105 @@ interface ChatAreaProps {
 }
 
 
-// Renderizza il testo trasformando {{chunk_id}} in badge gialli cliccabili
-function renderContent(text: string, onCitationClick: (id: string) => void): React.ReactNode {
-  const parts = text.split(/(\{\{[^}]+\}\})/g);
+// Renderizza markdown semplice + citazioni {{chunk_id}} come badge gialli
+function CitationBadge({ chunkId, onClick }: { chunkId: string; onClick: () => void }) {
+  return (
+    <span
+      onClick={onClick}
+      title={`Apri fonte: ${chunkId}`}
+      style={{
+        display: "inline-block", background: "#fff3cd", border: "1px solid #ffc107",
+        borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 600,
+        color: "#856404", cursor: "pointer", marginLeft: 2, marginRight: 2,
+        verticalAlign: "middle", transition: "background 0.15s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#ffe69c")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "#fff3cd")}
+    >
+      [{chunkId.split("-").slice(-2).join("-")}]
+    </span>
+  );
+}
+
+function renderInline(text: string, onCitationClick: (id: string) => void, keyPrefix: string): React.ReactNode[] {
+  const parts = text.split(/(\{\{[^}]+\}\}|\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
-    const match = part.match(/^\{\{([^}]+)\}\}$/);
-    if (match) {
-      const chunkId = match[1].trim();
-      return (
-        <span
-          key={i}
-          onClick={() => onCitationClick(chunkId)}
-          title={`Apri fonte: ${chunkId}`}
-          style={{
-            display: "inline-block",
-            background: "#fff3cd",
-            border: "1px solid #ffc107",
-            borderRadius: 4,
-            padding: "1px 6px",
-            fontSize: 11,
-            fontWeight: 600,
-            color: "#856404",
-            cursor: "pointer",
-            marginLeft: 2,
-            marginRight: 2,
-            verticalAlign: "middle",
-            transition: "background 0.15s",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#ffe69c")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#fff3cd")}
-        >
-          [{chunkId.split("-").slice(-2).join("-")}]
-        </span>
-      );
-    }
-    // Testo normale — preserva a capo
-    return <span key={i} style={{ whiteSpace: "pre-wrap" }}>{part}</span>;
+    const cite = part.match(/^\{\{([^}]+)\}\}$/);
+    if (cite) return <CitationBadge key={`${keyPrefix}-c${i}`} chunkId={cite[1].trim()} onClick={() => onCitationClick(cite[1].trim())} />;
+    const bold = part.match(/^\*\*([^*]+)\*\*$/);
+    if (bold) return <strong key={`${keyPrefix}-b${i}`}>{bold[1]}</strong>;
+    return <React.Fragment key={`${keyPrefix}-t${i}`}>{part}</React.Fragment>;
   });
+}
+
+function renderContent(text: string, onCitationClick: (id: string) => void): React.ReactNode {
+  const lines = text.split("\n");
+  const nodes: React.ReactNode[] = [];
+  let listItems: React.ReactNode[] = [];
+  let keyIdx = 0;
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      nodes.push(
+        <ul key={`ul-${keyIdx++}`} style={{ margin: "6px 0 6px 18px", padding: 0 }}>
+          {listItems}
+        </ul>
+      );
+      listItems = [];
+    }
+  };
+
+  lines.forEach((line, i) => {
+    const k = `line-${i}`;
+    // H2: ## testo
+    if (/^##\s+/.test(line)) {
+      flushList();
+      const content = line.replace(/^##\s+/, "");
+      nodes.push(
+        <div key={k} style={{ fontWeight: 700, fontSize: 14.5, color: "#003781", margin: "12px 0 4px" }}>
+          {renderInline(content, onCitationClick, k)}
+        </div>
+      );
+      return;
+    }
+    // H3: ### testo  
+    if (/^###\s+/.test(line)) {
+      flushList();
+      const content = line.replace(/^###\s+/, "");
+      nodes.push(
+        <div key={k} style={{ fontWeight: 600, fontSize: 13.5, color: "#2c3e50", margin: "8px 0 2px" }}>
+          {renderInline(content, onCitationClick, k)}
+        </div>
+      );
+      return;
+    }
+    // Lista: - testo o • testo
+    if (/^[-•]\s+/.test(line)) {
+      const content = line.replace(/^[-•]\s+/, "");
+      listItems.push(
+        <li key={k} style={{ marginBottom: 3, lineHeight: 1.55 }}>
+          {renderInline(content, onCitationClick, k)}
+        </li>
+      );
+      return;
+    }
+    // Riga vuota
+    if (!line.trim()) {
+      flushList();
+      nodes.push(<div key={k} style={{ height: 6 }} />);
+      return;
+    }
+    // Testo normale
+    flushList();
+    nodes.push(
+      <div key={k} style={{ lineHeight: 1.6, marginBottom: 2 }}>
+        {renderInline(line, onCitationClick, k)}
+      </div>
+    );
+  });
+
+  flushList();
+  return <>{nodes}</>;
 }
 
 function TypingIndicator() {

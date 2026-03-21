@@ -153,7 +153,7 @@ export default function AdminShell() {
         body: form,
       });
       const data = await res.json();
-      setUploadResult({ ok: res.ok, message: data.message, chunks: data.chunks });
+      setUploadResult({ ok: res.ok, message: res.ok ? `Caricamento completato con successo!` : (data.error ?? 'Errore durante il caricamento.'), chunks: data.count });
       if (res.ok) {
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = "";

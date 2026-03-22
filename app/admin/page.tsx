@@ -1,4 +1,6 @@
 // app/admin/page.tsx  — Server Component con guard ADMIN_EMAIL
+// ✅ FIX: usa getAll() + setAll() per evitare warning @supabase/ssr
+
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -16,6 +18,9 @@ export default async function AdminPage() {
       cookies: {
         getAll() {
           return cookieStore.getAll();
+        },
+        setAll() {
+          // Server component: sola lettura
         },
       },
     }

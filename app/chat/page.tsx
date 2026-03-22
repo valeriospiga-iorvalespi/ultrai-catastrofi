@@ -1,4 +1,6 @@
 // app/chat/page.tsx  — Server Component
+// ✅ FIX: usa getAll() invece di get() per evitare warning @supabase/ssr
+
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -14,6 +16,9 @@ export default async function ChatPage() {
       cookies: {
         getAll() {
           return cookieStore.getAll();
+        },
+        setAll() {
+          // Server component: sola lettura, non serve settare
         },
       },
     }

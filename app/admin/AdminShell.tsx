@@ -5,12 +5,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
+// ✅ FIX: campi allineati allo schema reale della tabella "chunks"
 interface Chunk {
   id: string;
+  chunk_id: string;
   product_id: string;
-  source_file: string;
-  chunk_index: number;
-  content: string;
+  heading: string;       // era source_file — non esiste in DB
+  section: string;
+  article: string;
   tokens: number;
   created_at: string;
 }
@@ -65,10 +67,14 @@ export default function AdminShell() {
   const [configSaving, setConfigSaving] = useState(false);
   const [configMsg, setConfigMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const fetchChunks = useCallback(async () => {
+  // ✅ FIX: fetchChunks ora passa productId se selezionato
+  const fetchChunks = useCallback(async (productId?: string) => {
     setChunksLoading(true);
     try {
-      const res = await fetch("/api/admin/chunks");
+      const url = productId && productId !== "all"
+        ? `/api/admin/chunks?productId=${productId}`
+        : `/api/admin/chunks`;
+      const res = await fetch(url);
       const data = await res.json();
       setChunks(data.chunks ?? []);
     } catch {
@@ -87,14 +93,6 @@ export default function AdminShell() {
       setProducts([]);
     }
   }, []);
-
-  // Load data on tab change
-  useEffect(() => {
-    if (tab === "chunks") fetchChunks();
-    if (tab === "products") fetchProducts();
-    if (tab === "config") fetchConfig();
-  }, [tab, fetchChunks, fetchProducts]);
-
 
   const fetchConfig = useCallback(async () => {
     setConfigLoading(true);
@@ -115,6 +113,18 @@ export default function AdminShell() {
       setConfigLoading(false);
     }
   }, []);
+
+  // Load data on tab change
+  useEffect(() => {
+    if (tab === "chunks") fetchChunks();
+    if (tab === "products") fetchProducts();
+    if (tab === "config") fetchConfig();
+  }, [tab, fetchChunks, fetchProducts, fetchConfig]);
+
+  // ✅ FIX: aggiorna i chunk quando cambia il filtro prodotto
+  useEffect(() => {
+    if (tab === "chunks") fetchChunks(filterProduct);
+  }, [filterProduct, tab, fetchChunks]);
 
   const handleSaveConfig = async () => {
     setConfigSaving(true);
@@ -153,7 +163,13 @@ export default function AdminShell() {
         body: form,
       });
       const data = await res.json();
-      setUploadResult({ ok: res.ok, message: res.ok ? `Caricamento completato con successo!` : (data.error ?? 'Errore durante il caricamento.'), chunks: data.count });
+      setUploadResult({
+        ok: res.ok,
+        message: res.ok
+          ? `Caricamento completato con successo!`
+          : (data.error ?? "Errore durante il caricamento."),
+        chunks: data.count,
+      });
       if (res.ok) {
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -171,12 +187,14 @@ export default function AdminShell() {
     setChunks((prev) => prev.filter((c) => c.id !== id));
   };
 
+  // ✅ FIX: filtro usa i campi corretti (heading, section, article)
   const filteredChunks = chunks.filter((c) => {
     const matchProduct = filterProduct === "all" || c.product_id === filterProduct;
     const matchSearch =
       !search ||
-      c.content.toLowerCase().includes(search.toLowerCase()) ||
-      c.source_file.toLowerCase().includes(search.toLowerCase());
+      c.heading.toLowerCase().includes(search.toLowerCase()) ||
+      c.section.toLowerCase().includes(search.toLowerCase()) ||
+      c.article.toLowerCase().includes(search.toLowerCase());
     return matchProduct && matchSearch;
   });
 
@@ -240,6 +258,7 @@ export default function AdminShell() {
         </button>
       </header>
 
+      {/* ✅ FIX: tutto il contenuto è dentro questo container, inclusa la tab Config */}
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
         <h1 style={{ color: "#003781", fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
           Gestione Knowledge Base
@@ -301,7 +320,6 @@ export default function AdminShell() {
               Carica documento .docx
             </h2>
 
-            {/* Seleziona prodotto */}
             <div style={{ marginBottom: 18 }}>
               <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
                 Prodotto di destinazione
@@ -326,7 +344,6 @@ export default function AdminShell() {
               </select>
             </div>
 
-            {/* File picker */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
                 File documento (.docx)
@@ -376,7 +393,6 @@ export default function AdminShell() {
               />
             </div>
 
-            {/* Risultato upload */}
             {uploadResult && (
               <div
                 style={{
@@ -439,7 +455,6 @@ export default function AdminShell() {
         {/* ── TAB CHUNKS ── */}
         {tab === "chunks" && (
           <div>
-            {/* Filtri */}
             <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
               <select
                 value={filterProduct}
@@ -461,7 +476,7 @@ export default function AdminShell() {
               </select>
               <input
                 type="text"
-                placeholder="Cerca nel contenuto…"
+                placeholder="Cerca in heading / sezione…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 style={{
@@ -479,7 +494,7 @@ export default function AdminShell() {
                 {filteredChunks.length} chunk trovati
               </span>
               <button
-                onClick={fetchChunks}
+                onClick={() => fetchChunks(filterProduct)}
                 style={{
                   background: "none",
                   border: "1px solid #d1d9e0",
@@ -533,6 +548,7 @@ export default function AdminShell() {
                         marginBottom: 8,
                       }}
                     >
+                      {/* ✅ FIX: usa chunk_id invece di chunk_index */}
                       <span
                         style={{
                           background: "#e8f0fb",
@@ -541,12 +557,18 @@ export default function AdminShell() {
                           padding: "2px 7px",
                           fontSize: 11,
                           fontWeight: 600,
+                          maxWidth: 160,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
                         }}
+                        title={chunk.chunk_id}
                       >
-                        #{chunk.chunk_index}
+                        {chunk.chunk_id}
                       </span>
+                      {/* ✅ FIX: usa heading invece di source_file */}
                       <span style={{ fontSize: 12, color: "#5a6a85", fontWeight: 500 }}>
-                        📄 {chunk.source_file}
+                        📄 {chunk.section || "—"}
                       </span>
                       <span
                         style={{
@@ -586,21 +608,15 @@ export default function AdminShell() {
                         🗑️ Elimina
                       </button>
                     </div>
-                    <p
-                      style={{
-                        fontSize: 13,
-                        color: "#2c3e50",
-                        lineHeight: 1.55,
-                        margin: 0,
-                        whiteSpace: "pre-wrap",
-                        maxHeight: 80,
-                        overflow: "hidden",
-                        maskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
-                        WebkitMaskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
-                      }}
-                    >
-                      {chunk.content}
-                    </p>
+                    {/* ✅ FIX: mostra heading come titolo e article come sottotitolo */}
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#003781", marginBottom: 4 }}>
+                      {chunk.heading}
+                    </div>
+                    {chunk.article && chunk.article !== chunk.heading && (
+                      <div style={{ fontSize: 11.5, color: "#888", marginBottom: 6 }}>
+                        {chunk.article}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -696,9 +712,8 @@ export default function AdminShell() {
             </div>
           </div>
         )}
-      </div>
 
-
+        {/* ✅ FIX: tab Config ora è DENTRO il container maxWidth */}
         {tab === "config" && (
           <div style={{ maxWidth: 680 }}>
             <div style={{ marginBottom: 20 }}>
@@ -807,6 +822,7 @@ export default function AdminShell() {
             )}
           </div>
         )}
+      </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

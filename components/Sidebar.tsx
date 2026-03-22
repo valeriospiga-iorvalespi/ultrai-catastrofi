@@ -9,6 +9,14 @@ export interface Conversation {
   updatedAt: string;
 }
 
+export interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sourceIds?: string[];
+  timestamp: string; // ISO string per serializzazione
+}
+
 interface SidebarProps {
   conversations: Conversation[];
   activeId: string | null;
@@ -16,12 +24,13 @@ interface SidebarProps {
   onSelect: (id: string) => void;
 }
 
-const STORAGE_KEY = "ultrai_cni_history";
+const HISTORY_KEY = "ultrai_cni_history";
+const MESSAGES_PREFIX = "ultrai_cni_msgs_";
 
 export function loadHistory(): Conversation[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
   } catch {
     return [];
   }
@@ -29,7 +38,34 @@ export function loadHistory(): Conversation[] {
 
 export function saveHistory(conversations: Conversation[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(conversations));
+}
+
+// ✅ NUOVO: salva i messaggi di una conversazione
+export function saveMessages(conversationId: string, messages: Message[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    `${MESSAGES_PREFIX}${conversationId}`,
+    JSON.stringify(messages)
+  );
+}
+
+// ✅ NUOVO: carica i messaggi di una conversazione
+export function loadMessages(conversationId: string): Message[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(
+      localStorage.getItem(`${MESSAGES_PREFIX}${conversationId}`) || "[]"
+    );
+  } catch {
+    return [];
+  }
+}
+
+// ✅ NUOVO: elimina i messaggi di una conversazione
+export function deleteMessages(conversationId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(`${MESSAGES_PREFIX}${conversationId}`);
 }
 
 export default function Sidebar({ conversations, activeId, onNew, onSelect }: SidebarProps) {
@@ -39,7 +75,6 @@ export default function Sidebar({ conversations, activeId, onNew, onSelect }: Si
     c.title.toLowerCase().includes(query.toLowerCase())
   );
 
-  // Group by date
   const today = new Date().toDateString();
   const yesterday = new Date(Date.now() - 86400000).toDateString();
 
@@ -72,7 +107,6 @@ export default function Sidebar({ conversations, activeId, onNew, onSelect }: Si
         overflow: "hidden",
       }}
     >
-      {/* Nuova chat */}
       <div style={{ padding: "12px 14px 8px" }}>
         <button
           onClick={onNew}
@@ -99,7 +133,6 @@ export default function Sidebar({ conversations, activeId, onNew, onSelect }: Si
         </button>
       </div>
 
-      {/* Cerca */}
       <div style={{ padding: "4px 14px 10px" }}>
         <div style={{ position: "relative" }}>
           <input
@@ -135,7 +168,6 @@ export default function Sidebar({ conversations, activeId, onNew, onSelect }: Si
         </div>
       </div>
 
-      {/* Lista storico */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0 8px" }}>
         {groups.length === 0 ? (
           <div
@@ -205,7 +237,6 @@ export default function Sidebar({ conversations, activeId, onNew, onSelect }: Si
         )}
       </div>
 
-      {/* Footer sidebar */}
       <div
         style={{
           borderTop: "1px solid #e0e0e0",

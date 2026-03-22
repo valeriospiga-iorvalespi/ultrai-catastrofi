@@ -313,8 +313,8 @@ export default function ChatShell({ userName }: ChatShellProps) {
         borderTop: "1px solid #002a63",
       }}>
         {(isMobile
-          ? ["© Allianz Italia", "v1.0"]
-          : ["© Allianz Italia S.p.A.", "Catastrofi naturali Impresa", "v1.0"]
+          ? ["© Demo By Valerio Spiga", "v1.0"]
+          : ["© Demo By Valerio Spiga", "Catastrofi naturali Impresa", "v1.0"]
         ).map((item, i, arr) => (
           <span key={item} style={{
             color: "rgba(255,255,255,0.75)", fontSize: isMobile ? 11 : 12,

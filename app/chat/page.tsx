@@ -1,6 +1,4 @@
-// app/chat/page.tsx  — Server Component
-// ✅ FIX: usa getAll() invece di get() per evitare warning @supabase/ssr
-
+// app/chat/page.tsx — Server Component
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -14,27 +12,22 @@ export default async function ChatPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {
-          // Server component: sola lettura, non serve settare
-        },
+        getAll() { return cookieStore.getAll(); },
+        setAll() {},
       },
     }
   );
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // getUser() verifica lato server — più sicuro di getSession()
+  const { data: { user }, error } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (error || !user || !user.email) {
     redirect("/login");
   }
 
   const userName =
-    session.user.user_metadata?.full_name ||
-    session.user.email?.split("@")[0] ||
+    user.user_metadata?.full_name ||
+    user.email.split("@")[0] ||
     "Utente";
 
   return <ChatShell userName={userName} />;

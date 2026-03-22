@@ -1,7 +1,7 @@
 // app/chat/ChatShell.tsx — responsive
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
@@ -29,7 +29,8 @@ export default function ChatShell({ userName }: ChatShellProps) {
   const isNarrow = isMobile || isTablet;
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile sidebar
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [modal, setModal] = useState<"profilo" | "impostazioni" | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -127,6 +128,24 @@ export default function ChatShell({ userName }: ChatShellProps) {
     if (!isNarrow) setSidebarOpen(false);
   }, [isNarrow]);
 
+  // ✅ FIX: chiudi menu cliccando fuori — senza overlay che blocca i bottoni
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    // Usa setTimeout per evitare che il click che apre il menu lo richiuda subito
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [menuOpen]);
+
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Buongiorno" : hour < 18 ? "Buon pomeriggio" : "Buona sera";
   const firstName = userName.split(" ")[0];
@@ -203,7 +222,7 @@ export default function ChatShell({ userName }: ChatShellProps) {
             </span>
           )}
 
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative" }} ref={menuRef}>
             <button onClick={() => setMenuOpen((v) => !v)}
               style={{
                 background: menuOpen ? "#f0f0f0" : "none", border: "none", borderRadius: 6,
@@ -383,11 +402,6 @@ export default function ChatShell({ userName }: ChatShellProps) {
             </div>
           </div>
         </>
-      )}
-
-      {menuOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 100 }}
-          onClick={() => setMenuOpen(false)} />
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

@@ -9,6 +9,8 @@ import Sidebar, {
   Conversation,
   loadHistory,
   saveHistory,
+  deleteMessages,
+  deleteAllHistory,
 } from "@/components/Sidebar";
 import ChatArea from "@/components/ChatArea";
 
@@ -43,6 +45,44 @@ export default function ChatShell({ userName }: ChatShellProps) {
 
   const handleSelect = (id: string) => setActiveId(id);
 
+  // ✅ Elimina singola conversazione
+  const handleDelete = (id: string) => {
+    deleteMessages(id);
+    setConversations((prev) => {
+      const updated = prev.filter((c) => c.id !== id);
+      saveHistory(updated);
+      // Se si stava visualizzando questa chat, passa alla prima disponibile o crea nuova
+      if (activeId === id) {
+        if (updated.length > 0) {
+          setActiveId(updated[0].id);
+        } else {
+          const newConv: Conversation = {
+            id: `conv_${Date.now()}`,
+            title: "Nuova chat",
+            updatedAt: new Date().toISOString(),
+          };
+          saveHistory([newConv]);
+          setActiveId(newConv.id);
+          return [newConv];
+        }
+      }
+      return updated;
+    });
+  };
+
+  // ✅ Elimina tutte le conversazioni
+  const handleDeleteAll = () => {
+    deleteAllHistory();
+    const newConv: Conversation = {
+      id: `conv_${Date.now()}`,
+      title: "Nuova chat",
+      updatedAt: new Date().toISOString(),
+    };
+    saveHistory([newConv]);
+    setConversations([newConv]);
+    setActiveId(newConv.id);
+  };
+
   const handleConversationUpdate = (id: string, title: string) => {
     setConversations((prev) => {
       const updated = prev.map((c) =>
@@ -55,7 +95,7 @@ export default function ChatShell({ userName }: ChatShellProps) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push("/login");
+    window.location.href = "/login";
   };
 
   useEffect(() => {
@@ -76,82 +116,32 @@ export default function ChatShell({ userName }: ChatShellProps) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? "Buongiorno" : hour < 18 ? "Buon pomeriggio" : "Buona sera";
-
+  const greeting = hour < 12 ? "Buongiorno" : hour < 18 ? "Buon pomeriggio" : "Buona sera";
   const firstName = userName.split(" ")[0];
 
   const menuItems = [
-    {
-      label: "👤 Profilo",
-      action: () => { setModal("profilo"); setMenuOpen(false); },
-    },
-    {
-      label: "⚙️ Impostazioni",
-      action: () => { setModal("impostazioni"); setMenuOpen(false); },
-    },
-    {
-      label: "📊 Admin",
-      // ✅ FIX: usa window.location invece di router.push per evitare
-      // interferenze con l'overlay che chiude il menu
-      action: () => { setMenuOpen(false); setTimeout(() => router.push("/admin"), 50); },
-    },
-    {
-      label: "🚪 Esci",
-      action: () => { setMenuOpen(false); handleLogout(); },
-      danger: true as const,
-    },
+    { label: "👤 Profilo", action: () => { setModal("profilo"); setMenuOpen(false); } },
+    { label: "⚙️ Impostazioni", action: () => { setModal("impostazioni"); setMenuOpen(false); } },
+    { label: "📊 Admin", action: () => { setMenuOpen(false); window.location.href = "/admin"; } },
+    { label: "🚪 Esci", action: () => { setMenuOpen(false); handleLogout(); }, danger: true as const },
   ];
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateRows: "48px 1fr 44px",
-        height: "100vh",
-        fontFamily: "'Segoe UI', system-ui, sans-serif",
-        overflow: "hidden",
-      }}
-    >
+    <div style={{ display: "grid", gridTemplateRows: "48px 1fr 44px", height: "100vh",
+      fontFamily: "'Segoe UI', system-ui, sans-serif", overflow: "hidden" }}>
+
       {/* ─── HEADER ─── */}
-      <header
-        style={{
-          background: "#fff",
-          borderBottom: "1px solid #e0e0e0",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 20px",
-          gap: 12,
-          zIndex: 10,
-        }}
-      >
+      <header style={{ background: "#fff", borderBottom: "1px solid #e0e0e0",
+        display: "flex", alignItems: "center", padding: "0 20px", gap: 12, zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
-          <Image
-            src="/allianz-logo.png"
-            alt="Allianz"
-            width={30}
-            height={30}
+          <Image src="/allianz-logo.png" alt="Allianz" width={30} height={30}
             style={{ objectFit: "contain" }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
           <span style={{ fontWeight: 600, fontSize: 15, color: "#003781" }}>
             UltrAI Catastrofi naturali Impresa
           </span>
-          <span
-            style={{
-              background: "#e8f0fb",
-              color: "#003781",
-              borderRadius: 4,
-              padding: "2px 8px",
-              fontSize: 11,
-              fontWeight: 600,
-              marginLeft: 4,
-            }}
-          >
-            BETA
-          </span>
+          <span style={{ background: "#e8f0fb", color: "#003781", borderRadius: 4,
+            padding: "2px 8px", fontSize: 11, fontWeight: 600, marginLeft: 4 }}>BETA</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -160,68 +150,28 @@ export default function ChatShell({ userName }: ChatShellProps) {
             <strong style={{ color: "#2c3e50", fontWeight: 600 }}>{firstName}</strong>
           </span>
 
-          {/* Menu 3 puntini */}
           <div style={{ position: "relative" }}>
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              style={{
-                background: menuOpen ? "#f0f0f0" : "none",
-                border: "none",
-                borderRadius: 6,
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontSize: 18,
-                color: "#5a6a85",
-                letterSpacing: "0.05em",
-                position: "relative",
-                zIndex: 101, // ✅ sopra l'overlay
-              }}
-            >
+            <button onClick={() => setMenuOpen((v) => !v)}
+              style={{ background: menuOpen ? "#f0f0f0" : "none", border: "none", borderRadius: 6,
+                width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", fontSize: 18, color: "#5a6a85", letterSpacing: "0.05em",
+                position: "relative", zIndex: 101 }}>
               •••
             </button>
 
             {menuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "calc(100% + 4px)",
-                  background: "#fff",
-                  border: "1px solid #e0e0e0",
-                  borderRadius: 8,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                  minWidth: 180,
-                  zIndex: 101, // ✅ sopra l'overlay
-                  overflow: "hidden",
-                }}
-              >
+              <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)",
+                background: "#fff", border: "1px solid #e0e0e0", borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 180, zIndex: 101, overflow: "hidden" }}>
                 {menuItems.map((item) => (
-                  <button
-                    key={item.label}
-                    onClick={item.action}
-                    style={{
-                      width: "100%",
-                      background: "none",
-                      border: "none",
-                      padding: "10px 16px",
-                      textAlign: "left",
-                      fontSize: 13.5,
-                      cursor: "pointer",
+                  <button key={item.label} onClick={item.action}
+                    style={{ width: "100%", background: "none", border: "none", padding: "10px 16px",
+                      textAlign: "left", fontSize: 13.5, cursor: "pointer",
                       color: "danger" in item && item.danger ? "#c0392b" : "#2c3e50",
                       borderTop: item.label === "🚪 Esci" ? "1px solid #f0f0f0" : "none",
-                      transition: "background 0.1s",
-                    }}
-                    onMouseEnter={(e) =>
-                      ((e.currentTarget as HTMLButtonElement).style.background = "#f9fafb")
-                    }
-                    onMouseLeave={(e) =>
-                      ((e.currentTarget as HTMLButtonElement).style.background = "none")
-                    }
-                  >
+                      transition: "background 0.1s" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "none")}>
                     {item.label}
                   </button>
                 ))}
@@ -238,6 +188,8 @@ export default function ChatShell({ userName }: ChatShellProps) {
           activeId={activeId}
           onNew={handleNew}
           onSelect={handleSelect}
+          onDelete={handleDelete}
+          onDeleteAll={handleDeleteAll}
         />
         <ChatArea
           productId="a986fcdc-a745-4cc2-848c-165477b1fbf3"
@@ -247,26 +199,11 @@ export default function ChatShell({ userName }: ChatShellProps) {
       </div>
 
       {/* ─── FOOTER ─── */}
-      <footer
-        style={{
-          height: 44,
-          background: "#003781",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderTop: "1px solid #002a63",
-        }}
-      >
+      <footer style={{ height: 44, background: "#003781", display: "flex",
+        alignItems: "center", justifyContent: "center", borderTop: "1px solid #002a63" }}>
         {["© Allianz Italia S.p.A.", "Catastrofi naturali Impresa", "v1.0"].map((item, i) => (
-          <span
-            key={item}
-            style={{
-              color: "rgba(255,255,255,0.75)",
-              fontSize: 12,
-              padding: "0 14px",
-              borderRight: i < 2 ? "1px solid rgba(255,255,255,0.2)" : "none",
-            }}
-          >
+          <span key={item} style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, padding: "0 14px",
+            borderRight: i < 2 ? "1px solid rgba(255,255,255,0.2)" : "none" }}>
             {item}
           </span>
         ))}
@@ -328,21 +265,12 @@ export default function ChatShell({ userName }: ChatShellProps) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {[
-                {
-                  label: "📊 Pannello Admin",
-                  desc: "Gestisci normativo e configurazione",
-                  action: () => { router.push("/admin"); setModal(null); },
-                },
-                {
-                  label: "🗑️ Cancella storico chat",
-                  desc: "Rimuove tutte le conversazioni salvate localmente",
-                  action: () => { localStorage.clear(); window.location.reload(); },
-                },
+                { label: "📊 Pannello Admin", desc: "Gestisci normativo e configurazione",
+                  action: () => { window.location.href = "/admin"; setModal(null); } },
               ].map((item) => (
                 <button key={item.label} onClick={item.action}
                   style={{ background: "#f8fafd", border: "1px solid #e8ecf0", borderRadius: 8,
-                    padding: "12px 14px", textAlign: "left", cursor: "pointer",
-                    transition: "background 0.15s" }}
+                    padding: "12px 14px", textAlign: "left", cursor: "pointer", transition: "background 0.15s" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#e8f0fb")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "#f8fafd")}>
                   <div style={{ fontWeight: 600, fontSize: 13.5, color: "#2c3e50" }}>{item.label}</div>
@@ -362,13 +290,10 @@ export default function ChatShell({ userName }: ChatShellProps) {
         </>
       )}
 
-      {/* ✅ FIX: overlay con zIndex 100, menu e bottone con zIndex 101
-          così i click sui bottoni del menu non vengono intercettati */}
+      {/* Overlay chiudi menu */}
       {menuOpen && (
-        <div
-          style={{ position: "fixed", inset: 0, zIndex: 100 }}
-          onClick={() => setMenuOpen(false)}
-        />
+        <div style={{ position: "fixed", inset: 0, zIndex: 100 }}
+          onClick={() => setMenuOpen(false)} />
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

@@ -1,4 +1,4 @@
-// app/chat/ChatShell.tsx — Client Component
+// app/chat/ChatShell.tsx — responsive
 "use client";
 
 import { useState, useEffect } from "react";
@@ -13,6 +13,7 @@ import Sidebar, {
   deleteAllHistory,
 } from "@/components/Sidebar";
 import ChatArea from "@/components/ChatArea";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
 
 interface ChatShellProps {
   userName: string;
@@ -24,10 +25,20 @@ export default function ChatShell({ userName }: ChatShellProps) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
   const router = useRouter();
+  const { isMobile, isTablet } = useBreakpoint();
+  const isNarrow = isMobile || isTablet;
+
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile sidebar
   const [modal, setModal] = useState<"profilo" | "impostazioni" | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Chiudi sidebar mobile quando si seleziona una chat
+  const handleSelect = (id: string) => {
+    setActiveId(id);
+    if (isNarrow) setSidebarOpen(false);
+  };
 
   const handleNew = () => {
     const newConv: Conversation = {
@@ -41,17 +52,14 @@ export default function ChatShell({ userName }: ChatShellProps) {
       return updated;
     });
     setActiveId(newConv.id);
+    if (isNarrow) setSidebarOpen(false);
   };
 
-  const handleSelect = (id: string) => setActiveId(id);
-
-  // ✅ Elimina singola conversazione
   const handleDelete = (id: string) => {
     deleteMessages(id);
     setConversations((prev) => {
       const updated = prev.filter((c) => c.id !== id);
       saveHistory(updated);
-      // Se si stava visualizzando questa chat, passa alla prima disponibile o crea nuova
       if (activeId === id) {
         if (updated.length > 0) {
           setActiveId(updated[0].id);
@@ -70,7 +78,6 @@ export default function ChatShell({ userName }: ChatShellProps) {
     });
   };
 
-  // ✅ Elimina tutte le conversazioni
   const handleDeleteAll = () => {
     deleteAllHistory();
     const newConv: Conversation = {
@@ -115,6 +122,11 @@ export default function ChatShell({ userName }: ChatShellProps) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Chiudi sidebar mobile al resize verso desktop
+  useEffect(() => {
+    if (!isNarrow) setSidebarOpen(false);
+  }, [isNarrow]);
+
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Buongiorno" : hour < 18 ? "Buon pomeriggio" : "Buona sera";
   const firstName = userName.split(" ")[0];
@@ -127,49 +139,101 @@ export default function ChatShell({ userName }: ChatShellProps) {
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateRows: "48px 1fr 44px", height: "100vh",
-      fontFamily: "'Segoe UI', system-ui, sans-serif", overflow: "hidden" }}>
+    <div style={{
+      display: "grid",
+      gridTemplateRows: "48px 1fr 44px",
+      height: "100dvh", // dvh per mobile (evita il problema con la barra URL)
+      fontFamily: "'Segoe UI', system-ui, sans-serif",
+      overflow: "hidden",
+    }}>
 
       {/* ─── HEADER ─── */}
-      <header style={{ background: "#fff", borderBottom: "1px solid #e0e0e0",
-        display: "flex", alignItems: "center", padding: "0 20px", gap: 12, zIndex: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
-          <Image src="/allianz-logo.png" alt="Allianz" width={30} height={30}
-            style={{ objectFit: "contain" }}
+      <header style={{
+        background: "#fff",
+        borderBottom: "1px solid #e0e0e0",
+        display: "flex",
+        alignItems: "center",
+        padding: isMobile ? "0 12px" : "0 20px",
+        gap: isMobile ? 8 : 12,
+        zIndex: 10,
+      }}>
+
+        {/* Hamburger — solo mobile/tablet */}
+        {isNarrow && (
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            style={{
+              background: sidebarOpen ? "#f0f0f0" : "none",
+              border: "none", borderRadius: 6, width: 36, height: 36,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", flexShrink: 0, fontSize: 18, color: "#5a6a85",
+              zIndex: 101,
+            }}>
+            {sidebarOpen ? "✕" : "☰"}
+          </button>
+        )}
+
+        {/* Logo + titolo */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+          <Image src="/allianz-logo.png" alt="Allianz" width={28} height={28}
+            style={{ objectFit: "contain", flexShrink: 0 }}
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          <span style={{ fontWeight: 600, fontSize: 15, color: "#003781" }}>
-            UltrAI Catastrofi naturali Impresa
+          <span style={{
+            fontWeight: 600,
+            fontSize: isMobile ? 13 : 15,
+            color: "#003781",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}>
+            {isMobile ? "UltrAI CNI" : "UltrAI Catastrofi naturali Impresa"}
           </span>
-          <span style={{ background: "#e8f0fb", color: "#003781", borderRadius: 4,
-            padding: "2px 8px", fontSize: 11, fontWeight: 600, marginLeft: 4 }}>BETA</span>
+          {!isMobile && (
+            <span style={{ background: "#e8f0fb", color: "#003781", borderRadius: 4,
+              padding: "2px 8px", fontSize: 11, fontWeight: 600, flexShrink: 0 }}>BETA</span>
+          )}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13.5, color: "#5a6a85" }}>
-            {greeting},{" "}
-            <strong style={{ color: "#2c3e50", fontWeight: 600 }}>{firstName}</strong>
-          </span>
+        {/* Saluto + menu */}
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0 }}>
+          {!isMobile && (
+            <span style={{ fontSize: 13.5, color: "#5a6a85", whiteSpace: "nowrap" }}>
+              {greeting},{" "}
+              <strong style={{ color: "#2c3e50", fontWeight: 600 }}>{firstName}</strong>
+            </span>
+          )}
 
           <div style={{ position: "relative" }}>
             <button onClick={() => setMenuOpen((v) => !v)}
-              style={{ background: menuOpen ? "#f0f0f0" : "none", border: "none", borderRadius: 6,
+              style={{
+                background: menuOpen ? "#f0f0f0" : "none", border: "none", borderRadius: 6,
                 width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", fontSize: 18, color: "#5a6a85", letterSpacing: "0.05em",
-                position: "relative", zIndex: 101 }}>
+                position: "relative", zIndex: 101,
+              }}>
               •••
             </button>
 
             {menuOpen && (
-              <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)",
+              <div style={{
+                position: "absolute", right: 0, top: "calc(100% + 4px)",
                 background: "#fff", border: "1px solid #e0e0e0", borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 180, zIndex: 101, overflow: "hidden" }}>
+                boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 180, zIndex: 101, overflow: "hidden",
+              }}>
+                {isMobile && (
+                  <div style={{ padding: "10px 16px", borderBottom: "1px solid #f0f0f0",
+                    fontSize: 13, color: "#5a6a85" }}>
+                    {greeting}, <strong style={{ color: "#2c3e50" }}>{firstName}</strong>
+                  </div>
+                )}
                 {menuItems.map((item) => (
                   <button key={item.label} onClick={item.action}
-                    style={{ width: "100%", background: "none", border: "none", padding: "10px 16px",
+                    style={{
+                      width: "100%", background: "none", border: "none", padding: "10px 16px",
                       textAlign: "left", fontSize: 13.5, cursor: "pointer",
                       color: "danger" in item && item.danger ? "#c0392b" : "#2c3e50",
                       borderTop: item.label === "🚪 Esci" ? "1px solid #f0f0f0" : "none",
-                      transition: "background 0.1s" }}
+                    }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "none")}>
                     {item.label}
@@ -182,28 +246,62 @@ export default function ChatShell({ userName }: ChatShellProps) {
       </header>
 
       {/* ─── BODY ─── */}
-      <div style={{ display: "flex", overflow: "hidden" }}>
-        <Sidebar
-          conversations={conversations}
-          activeId={activeId}
-          onNew={handleNew}
-          onSelect={handleSelect}
-          onDelete={handleDelete}
-          onDeleteAll={handleDeleteAll}
-        />
+      <div style={{ display: "flex", overflow: "hidden", position: "relative" }}>
+
+        {/* Overlay mobile per chiudere sidebar */}
+        {isNarrow && sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{
+              position: "absolute", inset: 0, zIndex: 49,
+              background: "rgba(0,0,0,0.35)",
+            }}
+          />
+        )}
+
+        {/* Sidebar — drawer su mobile, fissa su desktop */}
+        <div style={{
+          position: isNarrow ? "absolute" : "relative",
+          left: isNarrow ? (sidebarOpen ? 0 : "-280px") : "auto",
+          top: 0, bottom: 0,
+          width: 260,
+          zIndex: 50,
+          transition: isNarrow ? "left 0.25s ease" : "none",
+          flexShrink: 0,
+        }}>
+          <Sidebar
+            conversations={conversations}
+            activeId={activeId}
+            onNew={handleNew}
+            onSelect={handleSelect}
+            onDelete={handleDelete}
+            onDeleteAll={handleDeleteAll}
+          />
+        </div>
+
         <ChatArea
           productId="a986fcdc-a745-4cc2-848c-165477b1fbf3"
           conversationId={activeId ?? undefined}
           onConversationUpdate={handleConversationUpdate}
+          isMobile={isMobile}
         />
       </div>
 
       {/* ─── FOOTER ─── */}
-      <footer style={{ height: 44, background: "#003781", display: "flex",
-        alignItems: "center", justifyContent: "center", borderTop: "1px solid #002a63" }}>
-        {["© Allianz Italia S.p.A.", "Catastrofi naturali Impresa", "v1.0"].map((item, i) => (
-          <span key={item} style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, padding: "0 14px",
-            borderRight: i < 2 ? "1px solid rgba(255,255,255,0.2)" : "none" }}>
+      <footer style={{
+        height: 44, background: "#003781",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        borderTop: "1px solid #002a63",
+      }}>
+        {(isMobile
+          ? ["© Allianz Italia", "v1.0"]
+          : ["© Allianz Italia S.p.A.", "Catastrofi naturali Impresa", "v1.0"]
+        ).map((item, i, arr) => (
+          <span key={item} style={{
+            color: "rgba(255,255,255,0.75)", fontSize: isMobile ? 11 : 12,
+            padding: "0 10px",
+            borderRight: i < arr.length - 1 ? "1px solid rgba(255,255,255,0.2)" : "none",
+          }}>
             {item}
           </span>
         ))}
@@ -214,9 +312,14 @@ export default function ChatShell({ userName }: ChatShellProps) {
         <>
           <div onClick={() => setModal(null)}
             style={{ position: "fixed", inset: 0, zIndex: 299, background: "rgba(0,0,0,0.3)" }} />
-          <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-            zIndex: 300, background: "#fff", borderRadius: 12, padding: 28, minWidth: 320,
-            boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+            zIndex: 300, background: "#fff", borderRadius: 12,
+            padding: isMobile ? 20 : 28,
+            width: isMobile ? "calc(100vw - 32px)" : "auto",
+            minWidth: isMobile ? "auto" : 320,
+            boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+          }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#003781" }}>👤 Profilo</h3>
               <button onClick={() => setModal(null)}
@@ -225,7 +328,7 @@ export default function ChatShell({ userName }: ChatShellProps) {
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
               <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#003781",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 20, color: "#fff", fontWeight: 700 }}>
+                fontSize: 20, color: "#fff", fontWeight: 700, flexShrink: 0 }}>
                 {firstName.charAt(0).toUpperCase()}
               </div>
               <div>
@@ -233,17 +336,9 @@ export default function ChatShell({ userName }: ChatShellProps) {
                 <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>Agente Allianz</div>
               </div>
             </div>
-            <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 14 }}>
-              <div style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>Sessione attiva</div>
-              <div style={{ fontSize: 13, color: "#2c3e50", fontFamily: "monospace",
-                background: "#f5f7fa", padding: "6px 10px", borderRadius: 6 }}>
-                {greeting}, {firstName}
-              </div>
-            </div>
             <button onClick={() => setModal(null)}
-              style={{ marginTop: 20, width: "100%", background: "#003781", color: "#fff",
-                border: "none", borderRadius: 8, padding: "10px 0", fontSize: 14,
-                fontWeight: 600, cursor: "pointer" }}>
+              style={{ width: "100%", background: "#003781", color: "#fff", border: "none",
+                borderRadius: 8, padding: "10px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
               Chiudi
             </button>
           </div>
@@ -255,28 +350,28 @@ export default function ChatShell({ userName }: ChatShellProps) {
         <>
           <div onClick={() => setModal(null)}
             style={{ position: "fixed", inset: 0, zIndex: 299, background: "rgba(0,0,0,0.3)" }} />
-          <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-            zIndex: 300, background: "#fff", borderRadius: 12, padding: 28, minWidth: 340,
-            boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+            zIndex: 300, background: "#fff", borderRadius: 12,
+            padding: isMobile ? 20 : 28,
+            width: isMobile ? "calc(100vw - 32px)" : "auto",
+            minWidth: isMobile ? "auto" : 340,
+            boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+          }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#003781" }}>⚙️ Impostazioni</h3>
               <button onClick={() => setModal(null)}
                 style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#888" }}>×</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                { label: "📊 Pannello Admin", desc: "Gestisci normativo e configurazione",
-                  action: () => { window.location.href = "/admin"; setModal(null); } },
-              ].map((item) => (
-                <button key={item.label} onClick={item.action}
-                  style={{ background: "#f8fafd", border: "1px solid #e8ecf0", borderRadius: 8,
-                    padding: "12px 14px", textAlign: "left", cursor: "pointer", transition: "background 0.15s" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#e8f0fb")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#f8fafd")}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5, color: "#2c3e50" }}>{item.label}</div>
-                  <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>{item.desc}</div>
-                </button>
-              ))}
+              <button onClick={() => { window.location.href = "/admin"; setModal(null); }}
+                style={{ background: "#f8fafd", border: "1px solid #e8ecf0", borderRadius: 8,
+                  padding: "12px 14px", textAlign: "left", cursor: "pointer" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#e8f0fb")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "#f8fafd")}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: "#2c3e50" }}>📊 Pannello Admin</div>
+                <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>Gestisci normativo e configurazione</div>
+              </button>
               <button onClick={() => { handleLogout(); setModal(null); }}
                 style={{ background: "#fff0f0", border: "1px solid #f5c1c1", borderRadius: 8,
                   padding: "12px 14px", textAlign: "left", cursor: "pointer" }}
@@ -290,7 +385,6 @@ export default function ChatShell({ userName }: ChatShellProps) {
         </>
       )}
 
-      {/* Overlay chiudi menu */}
       {menuOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 100 }}
           onClick={() => setMenuOpen(false)} />

@@ -7,7 +7,7 @@ import { useBreakpoint } from "@/hooks/useBreakpoint";
 interface Chunk {
   id: string; chunk_id: string; product_id: string;
   heading: string; section: string; article: string;
-  tokens: number; created_at: string; note?: string | null;
+  text: string; tokens: number; created_at: string; note?: string | null;
 }
 
 interface Product {
@@ -23,6 +23,7 @@ function ChunkCard({ chunk, onDelete, onSave }: {
   onSave: (id: string, note: string, heading: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [note, setNote] = useState(chunk.note ?? "");
   const [heading, setHeading] = useState(chunk.heading);
   const [saving, setSaving] = useState(false);
@@ -54,7 +55,13 @@ function ChunkCard({ chunk, onDelete, onSave }: {
         )}
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setEditing((v) => !v)}
+          <button onClick={() => { setExpanded((v) => !v); setEditing(false); }}
+            title={expanded ? "Nascondi testo" : "Mostra testo"}
+            style={{ background: expanded ? "#e8f0fb" : "none", border: "1px solid #c5d8f5",
+              borderRadius: 4, padding: "4px 10px", fontSize: 12, color: "#003781", cursor: "pointer" }}>
+            {expanded ? "▲" : "▼"}
+          </button>
+          <button onClick={() => { setEditing((v) => !v); setExpanded(false); }}
             style={{ background: editing ? "#e8f0fb" : "none", border: "1px solid #c5d8f5",
               borderRadius: 4, padding: "4px 10px", fontSize: 12, color: "#003781", cursor: "pointer" }}>
             ✏️
@@ -68,8 +75,19 @@ function ChunkCard({ chunk, onDelete, onSave }: {
       </div>
       <div style={{ fontSize: 12.5, fontWeight: 600, color: "#003781", marginBottom: 2 }}>{chunk.heading}</div>
       {chunk.article && chunk.article !== chunk.heading && (
-        <div style={{ fontSize: 11.5, color: "#888" }}>{chunk.article}</div>
+        <div style={{ fontSize: 11.5, color: "#888", marginBottom: expanded ? 6 : 0 }}>{chunk.article}</div>
       )}
+
+      {expanded && (
+        <div style={{ marginTop: 8, background: "#f8fafd", borderRadius: 8,
+          padding: "12px 14px", border: "1px solid #e8f0fb",
+          fontSize: 12.5, color: "#2c3e50", lineHeight: 1.7,
+          whiteSpace: "pre-wrap", fontFamily: "inherit",
+          maxHeight: 480, overflowY: "auto" }}>
+          {chunk.text || <span style={{ color: "#aaa" }}>Testo non disponibile.</span>}
+        </div>
+      )}
+
       {editing && (
         <div style={{ marginTop: 12, background: "#f8fafd", borderRadius: 8, padding: "14px 16px", border: "1px solid #e8f0fb" }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "#003781", marginBottom: 10 }}>✏️ Modifica metadati</div>
@@ -103,7 +121,6 @@ function ChunkCard({ chunk, onDelete, onSave }: {
     </div>
   );
 }
-
 export default function AdminShell() {
   const { isMobile } = useBreakpoint();
   const [tab, setTab] = useState<Tab>("upload");

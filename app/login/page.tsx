@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
 
 export default function LoginPage() {
   const supabase = createBrowserClient(
@@ -58,9 +57,7 @@ export default function LoginPage() {
         {/* Logo + titolo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 8 }}>
-            <Image src="/allianz-logo.png" alt="Allianz" width={40} height={40}
-              style={{ objectFit: "contain" }}
-              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#e30613", flexShrink: 0 }} />
             <div style={{ textAlign: "left" }}>
               {/* ✅ Solo "UltrAI" senza nome prodotto */}
               <div style={{ fontWeight: 800, fontSize: 22, color: "#003781", lineHeight: 1.1 }}>UltrAI</div>

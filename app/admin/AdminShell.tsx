@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import Image from "next/image";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
 
 interface Chunk {
@@ -251,8 +250,7 @@ export default function AdminShell() {
       <header style={{ background: "#fff", borderBottom: "1px solid #e0e0e0",
         padding: isMobile ? "0 14px" : "0 24px", height: 56,
         display: "flex", alignItems: "center", gap: 12 }}>
-        <Image src="/allianz-logo.png" alt="Allianz" width={28} height={28} style={{ objectFit: "contain", flexShrink: 0 }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#e30613", flexShrink: 0 }} />
         <span style={{ fontWeight: 700, fontSize: isMobile ? 14 : 16, color: "#003781", flex: 1 }}>
           {isMobile ? "Admin Panel" : "UltrAI – Admin Panel"}
         </span>

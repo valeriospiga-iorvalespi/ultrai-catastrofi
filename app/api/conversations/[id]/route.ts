@@ -1,6 +1,6 @@
-// app/api/conversations/route.ts
-// GET  /api/conversations?productId=uuid  → lista conversazioni utente
-// POST /api/conversations                 → crea nuova conversazione
+// app/api/conversations/[id]/route.ts
+// PATCH  /api/conversations/[id]  → aggiorna titolo
+// DELETE /api/conversations/[id]  → elimina conversazione
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
@@ -18,47 +18,47 @@ function makeClient(request: NextRequest) {
   );
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+): Promise<NextResponse> {
   const supabase = makeClient(request);
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
-  const productId = new URL(request.url).searchParams.get("productId");
-
-  let query = supabase
-    .from("conversations")
-    .select("id, title, product_id, created_at, updated_at")
-    .eq("user_id", user.id)
-    .order("updated_at", { ascending: false })
-    .limit(100);
-
-  if (productId) query = query.eq("product_id", productId);
-
-  const { data, error: dbError } = await query;
-  if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
-
-  return NextResponse.json({ conversations: data ?? [] });
-}
-
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  const supabase = makeClient(request);
-  const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-
-  let body: { title?: string; product_id?: string };
+  let body: { title?: string };
   try { body = await request.json(); }
-  catch { body = {}; }
+  catch { return NextResponse.json({ error: "Body non valido" }, { status: 400 }); }
 
   const { data, error: dbError } = await supabase
     .from("conversations")
-    .insert({
-      user_id: user.id,
-      product_id: body.product_id ?? null,
+    .update({
       title: body.title?.trim() || "Nuova chat",
+      updated_at: new Date().toISOString(),
     })
-    .select("id, title, product_id, created_at, updated_at")
+    .eq("id", params.id)
+    .eq("user_id", user.id) // sicurezza: solo le proprie
+    .select("id, title, updated_at")
     .single();
 
   if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
   return NextResponse.json({ conversation: data });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+): Promise<NextResponse> {
+  const supabase = makeClient(request);
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+
+  const { error: dbError } = await supabase
+    .from("conversations")
+    .delete()
+    .eq("id", params.id)
+    .eq("user_id", user.id); // sicurezza: solo le proprie
+
+  if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
+  return NextResponse.json({ success: true });
 }

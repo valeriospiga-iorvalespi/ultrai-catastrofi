@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import Image from "next/image";
 import { createBrowserClient } from "@supabase/ssr";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
 import ChatArea from "@/components/ChatArea";
@@ -209,9 +208,8 @@ export default function ChatShell({ userName }: ChatShellProps) {
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-          <Image src="/allianz-logo.png" alt="Allianz" width={28} height={28}
-            style={{ objectFit: "contain", flexShrink: 0 }}
-            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#e30613",
+            flexShrink: 0 }} />
           <span style={{ fontWeight: 600, fontSize: isMobile ? 13 : 15, color: "#003781",
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {isMobile ? "UltrAI" : `UltrAI ${selectedProduct?.name ?? ""}`}

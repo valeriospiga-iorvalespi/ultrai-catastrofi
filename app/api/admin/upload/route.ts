@@ -3,12 +3,24 @@
  * Supporta due modalità:
  *   mode=replace  → elimina chunk esistenti poi inserisce (default precedente)
  *   mode=append   → aggiunge chunk senza eliminare quelli esistenti
+ *
+ * Formati accettati: .docx  .md  .pdf
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { chunkDocxBuffer } from "@/lib/chunker";
+import { chunkDocxBuffer, chunkMarkdownBuffer, chunkPdfBuffer } from "@/lib/chunker";
 import type { Chunk } from "@/lib/chunker";
+
+// ─── MIME type → content-type per lo Storage ────────────────────────────────
+
+const CONTENT_TYPE: Record<string, string> = {
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".md":   "text/markdown",
+  ".pdf":  "application/pdf",
+};
+
+// ─── Supabase client ─────────────────────────────────────────────────────────
 
 function makeSupabaseClient(request: NextRequest) {
   return createServerClient(
@@ -23,6 +35,8 @@ function makeSupabaseClient(request: NextRequest) {
   );
 }
 
+// ─── Insert batch ─────────────────────────────────────────────────────────────
+
 async function insertChunksBatch(
   supabase: ReturnType<typeof createServerClient>,
   productId: string,
@@ -33,7 +47,6 @@ async function insertChunksBatch(
   let inserted = 0;
   let skipped = 0;
 
-  // In modalità append, deduplica per chunk_id per evitare conflitti
   const toInsert = chunks.filter((c) => {
     if (existingIds.has(c.id)) { skipped++; return false; }
     return true;
@@ -42,14 +55,14 @@ async function insertChunksBatch(
   for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
     const batch = toInsert.slice(i, i + BATCH_SIZE);
     const rows = batch.map((c) => ({
-      chunk_id: c.id,
+      chunk_id:   c.id,
       product_id: productId,
-      section: c.section,
-      article: c.article,
-      heading: c.heading,
-      text: c.text,
-      tokens: c.tokens,
-      note: null as string | null,
+      section:    c.section,
+      article:    c.article,
+      heading:    c.heading,
+      text:       c.text,
+      tokens:     c.tokens,
+      note:       null as string | null,
     }));
     const { error } = await supabase.from("chunks").insert(rows);
     if (error) throw new Error(`Batch insert fallito (offset ${i}): ${error.message}`);
@@ -59,14 +72,17 @@ async function insertChunksBatch(
   return { inserted, skipped };
 }
 
+// ─── POST handler ─────────────────────────────────────────────────────────────
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // ── 1. Parse FormData ──────────────────────────────────────────────────────
   let formData: FormData;
   try { formData = await request.formData(); }
   catch { return NextResponse.json({ error: "FormData non valida" }, { status: 400 }); }
 
-  const file = formData.get("file");
+  const file      = formData.get("file");
   const productId = formData.get("productId");
-  const mode = (formData.get("mode") as string) ?? "replace"; // "replace" | "append"
+  const mode      = (formData.get("mode") as string) ?? "replace";
 
   if (!file || !(file instanceof File))
     return NextResponse.json({ error: "Campo 'file' mancante o non valido" }, { status: 400 });
@@ -74,18 +90,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Campo 'productId' mancante" }, { status: 400 });
 
   const productIdStr = productId.trim();
-  const supabase = makeSupabaseClient(request);
+  const fileName     = file.name ?? "";
+  const ext          = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
 
+  // ── 2. Validazione estensione ──────────────────────────────────────────────
+  const ALLOWED = [".docx", ".md", ".pdf"];
+  if (!ALLOWED.includes(ext)) {
+    return NextResponse.json(
+      { error: `Formato non supportato: ${ext || "(nessuno)"}. Accettati: ${ALLOWED.join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  // ── 3. Auth ────────────────────────────────────────────────────────────────
+  const supabase = makeSupabaseClient(request);
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user)
     return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
   if (user.email !== process.env.ADMIN_EMAIL)
     return NextResponse.json({ error: "Accesso non autorizzato" }, { status: 403 });
 
-  const fileName = file.name ?? "";
-  if (!fileName.toLowerCase().endsWith(".docx"))
-    return NextResponse.json({ error: "Solo file .docx sono accettati" }, { status: 400 });
-
+  // ── 4. Leggi buffer ────────────────────────────────────────────────────────
   let buffer: Buffer;
   try {
     buffer = Buffer.from(await file.arrayBuffer());
@@ -94,18 +119,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Lettura file fallita" }, { status: 500 });
   }
 
+  // ── 5. Chunking — dispatch per estensione ──────────────────────────────────
   let chunks: Chunk[];
   try {
-    chunks = await chunkDocxBuffer(buffer);
+    if (ext === ".docx") {
+      chunks = await chunkDocxBuffer(buffer);
+    } else if (ext === ".md") {
+      chunks = await chunkMarkdownBuffer(buffer);
+    } else {
+      // .pdf
+      chunks = await chunkPdfBuffer(buffer, fileName);
+    }
   } catch (err) {
-    console.error("[upload] chunkDocxBuffer:", err);
-    return NextResponse.json({ error: "Elaborazione documento fallita" }, { status: 422 });
+    console.error("[upload] chunking:", err);
+    const msg = err instanceof Error ? err.message : "Elaborazione documento fallita";
+    return NextResponse.json({ error: msg }, { status: 422 });
   }
 
   if (chunks.length === 0)
     return NextResponse.json({ error: "Nessun chunk estratto dal documento" }, { status: 422 });
 
-  // ── MODALITÀ REPLACE: elimina chunk esistenti ──────────────────────────────
+  // ── 6. Replace: elimina chunk esistenti ───────────────────────────────────
   if (mode === "replace") {
     const { error: deleteError } = await supabase
       .from("chunks").delete().eq("product_id", productIdStr);
@@ -115,23 +149,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── CARICA chunk_id esistenti per deduplicazione in append ────────────────
+  // ── 7. Append: carica chunk_id esistenti per deduplicazione ───────────────
   let existingIds = new Set<string>();
   if (mode === "append") {
     const { data: existing } = await supabase
-      .from("chunks")
-      .select("chunk_id")
-      .eq("product_id", productIdStr);
+      .from("chunks").select("chunk_id").eq("product_id", productIdStr);
     existingIds = new Set((existing ?? []).map((r) => r.chunk_id));
   }
 
-  // ── INSERIMENTO ────────────────────────────────────────────────────────────
+  // ── 8. Inserimento ─────────────────────────────────────────────────────────
   let inserted = 0;
-  let skipped = 0;
+  let skipped  = 0;
   try {
     const result = await insertChunksBatch(supabase, productIdStr, chunks, existingIds);
     inserted = result.inserted;
-    skipped = result.skipped;
+    skipped  = result.skipped;
   } catch (err) {
     console.error("[upload] INSERT chunks:", err);
     if (mode === "replace") {
@@ -140,41 +172,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Inserimento chunk fallito." }, { status: 500 });
   }
 
-  // ── STORAGE ────────────────────────────────────────────────────────────────
-  const storageKey = `${productIdStr}/${Date.now()}_${fileName}`;
+  // ── 9. Storage ─────────────────────────────────────────────────────────────
+  const storageKey    = `${productIdStr}/${Date.now()}_${fileName}`;
+  const contentType   = CONTENT_TYPE[ext] ?? "application/octet-stream";
   const { error: storageError } = await supabase.storage
     .from("normativo")
-    .upload(storageKey, buffer, {
-      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      upsert: true,
-    });
+    .upload(storageKey, buffer, { contentType, upsert: true });
   if (storageError) console.warn("[upload] Storage upload fallito:", storageError);
 
-  // ── AGGIORNA products ──────────────────────────────────────────────────────
-  // In append, incrementa chunk_count; in replace, imposta il valore esatto
+  // ── 10. Aggiorna products ──────────────────────────────────────────────────
   if (mode === "replace") {
     await supabase.from("products").update({
       last_upload_at: new Date().toISOString(),
       last_file_name: fileName,
-      chunk_count: chunks.length,
+      chunk_count:    chunks.length,
     }).eq("id", productIdStr);
   } else {
-    // Recupera chunk_count attuale e aggiorna
     const { data: prod } = await supabase
       .from("products").select("chunk_count").eq("id", productIdStr).single();
     const newCount = (prod?.chunk_count ?? 0) + inserted;
     await supabase.from("products").update({
       last_upload_at: new Date().toISOString(),
       last_file_name: fileName,
-      chunk_count: newCount,
+      chunk_count:    newCount,
     }).eq("id", productIdStr);
   }
 
   return NextResponse.json({
     success: true,
-    count: inserted,
+    count:   inserted,
     skipped,
     mode,
+    format:  ext,
     ...(storageError ? { warning: "File originale non salvato su Storage" } : {}),
   });
 }

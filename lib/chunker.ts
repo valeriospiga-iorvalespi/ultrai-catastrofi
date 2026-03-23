@@ -1,16 +1,25 @@
 /**
  * lib/chunker.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Elabora un .docx del normativo assicurativo e produce chunk semanticamente
- * coerenti per il retrieval RAG.
+ * Elabora documenti assicurativi e produce chunk semanticamente coerenti
+ * per il retrieval RAG.
  *
- * Dipendenze:  mammoth  node-html-parser
+ * Formati supportati:
+ *   .docx  →  mammoth → HTML → parser strutturato
+ *   .md    →  split per heading ## CHUNK (formato CNI chunked)
+ *             oppure split generico per ## / ### se non è pre-chunked
+ *   .pdf   →  pdf-parse → testo grezzo → split per token con heading sintetico
+ *
+ * Dipendenze:  mammoth  node-html-parser  pdf-parse
  * Next.js 14 / TypeScript
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import mammoth from "mammoth";
-import { parse, HTMLElement, Node, NodeType } from "node-html-parser";
+import { parse, HTMLElement, NodeType } from "node-html-parser";
+// pdf-parse non ha tipi ufficiali — import con require per compatibilità Edge/Node
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse");
 
 // ─── Interfaccia pubblica ────────────────────────────────────────────────────
 
@@ -53,7 +62,22 @@ function countTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-// ─── Stato di build del chunk ────────────────────────────────────────────────
+/** Deduplicazione slug: aggiunge suffisso -2, -3 … se necessario */
+function deduplicateSlugs(chunks: Chunk[]): void {
+  const slugCount: Record<string, number> = {};
+  chunks.forEach((c) => { slugCount[c.id] = (slugCount[c.id] ?? 0) + 1; });
+  const slugSeen: Record<string, number> = {};
+  chunks.forEach((c) => {
+    if (slugCount[c.id] > 1) {
+      slugSeen[c.id] = (slugSeen[c.id] ?? 0) + 1;
+      c.id = `${c.id}-${slugSeen[c.id]}`;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARSER DOCX (logica originale invariata)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 interface ChunkState {
   section: string;
@@ -74,17 +98,13 @@ function flushChunk(
 ): Chunk | null {
   const text = state.lines.join("\n").trim();
   if (!text) return prevChunk;
-
   const tokens = countTokens(text);
-
-  // Troppo corto → unisci al chunk precedente
   if (tokens < TOKEN_MIN && prevChunk && forceMerge) {
     const merged = prevChunk.text + "\n" + text;
     prevChunk.text = merged;
     prevChunk.tokens = countTokens(merged);
     return prevChunk;
   }
-
   const chunk: Chunk = {
     id: slugify(state.heading),
     section: state.section,
@@ -97,29 +117,20 @@ function flushChunk(
   return chunk;
 }
 
-// ─── Stato globale del parser ────────────────────────────────────────────────
-
 interface ParserContext {
   currentSection: string;
   currentArticle: string;
   currentH2: string;
-  /** Chunk in costruzione */
   building: ChunkState | null;
   chunks: Chunk[];
   lastChunk: Chunk | null;
-  /** Siamo ancora nel prologo (prima del primo H1)? */
   inPrologue: boolean;
-  /** Stato per il glossario */
   glossaryLines: string[];
   inGlossaryTerm: boolean;
   glossaryTerm: string;
 }
 
-function newState(
-  section: string,
-  article: string,
-  heading: string
-): ChunkState {
+function newState(section: string, article: string, heading: string): ChunkState {
   return { section, article, heading, lines: [heading] };
 }
 
@@ -128,22 +139,11 @@ function appendText(state: ChunkState, text: string): void {
   if (line) state.lines.push(line);
 }
 
-// ─── Gestione prologo / glossario ────────────────────────────────────────────
-
-/**
- * I paragrafi prima del primo H1 sono trattati come definizioni di glossario.
- * Ogni definizione occupa un chunk a sé.
- * Euristica: la prima riga di testo in un paragrafo è il termine,
- * le successive sono la definizione.
- */
 function processGlossaryParagraph(ctx: ParserContext, text: string): void {
   const trimmed = text.trim();
   if (!trimmed) return;
-
-  // Se il testo contiene ":" nella prima parte, trattalo come "termine: def"
   const colonIdx = trimmed.indexOf(":");
   if (colonIdx > 0 && colonIdx < 80) {
-    // Flush eventuale termine pendente
     if (ctx.glossaryTerm) {
       const gl = ctx.glossaryLines.join("\n").trim();
       if (gl) {
@@ -165,7 +165,6 @@ function processGlossaryParagraph(ctx: ParserContext, text: string): void {
     ctx.glossaryLines = [trimmed.slice(colonIdx + 1).trim()];
   } else {
     if (!ctx.glossaryTerm) {
-      // Primo paragrafo senza ":" → consideriamolo termine
       ctx.glossaryTerm = trimmed;
       ctx.glossaryLines = [];
     } else {
@@ -193,27 +192,14 @@ function flushGlossary(ctx: ParserContext): void {
   ctx.glossaryLines = [];
 }
 
-// ─── Split per overflow (>400 token) ────────────────────────────────────────
-
-/**
- * Se il chunk in costruzione supera TOKEN_MAX, fa flush e apre un nuovo
- * stato con heading " (continua)" per il contenuto rimanente.
- */
 function checkOverflow(ctx: ParserContext): void {
   if (!ctx.building) return;
   if (stateTokens(ctx.building) <= TOKEN_MAX) return;
-
-  // Flush quello che c'è
   const continuaHeading = `${ctx.building.heading} (continua)`;
   const overflowLines: string[] = [];
-
-  // Porta avanti le ultime righe che causano overflow
-  // Strategia: dimezza le righe tenendo le prime nel chunk flushed
   const mid = Math.floor(ctx.building.lines.length / 2) || 1;
   overflowLines.push(...ctx.building.lines.splice(mid));
-
   ctx.lastChunk = flushChunk(ctx.building, ctx.chunks, ctx.lastChunk, false);
-
   ctx.building = {
     section: ctx.currentSection,
     article: ctx.currentArticle,
@@ -222,26 +208,17 @@ function checkOverflow(ctx: ParserContext): void {
   };
 }
 
-// ─── Gestione nodi HTML ──────────────────────────────────────────────────────
-
 function getTextContent(node: HTMLElement): string {
   return node.text.replace(/\s+/g, " ").trim();
 }
 
 function processNode(node: HTMLElement, ctx: ParserContext): void {
   const tag = node.tagName?.toLowerCase() ?? "";
-
-  // Ignora stili marcati .skip
   if (node.classList?.contains("skip")) return;
 
   switch (tag) {
     case "h1": {
-      // Fine prologo
-      if (ctx.inPrologue) {
-        flushGlossary(ctx);
-        ctx.inPrologue = false;
-      }
-      // Flush chunk corrente
+      if (ctx.inPrologue) { flushGlossary(ctx); ctx.inPrologue = false; }
       if (ctx.building) {
         ctx.lastChunk = flushChunk(ctx.building, ctx.chunks, ctx.lastChunk, true);
         ctx.building = null;
@@ -249,65 +226,38 @@ function processNode(node: HTMLElement, ctx: ParserContext): void {
       ctx.currentSection = getTextContent(node);
       ctx.currentArticle = "";
       ctx.currentH2 = "";
-      // H1 non genera chunk autonomo
       break;
     }
-
     case "h2": {
-      if (ctx.inPrologue) {
-        flushGlossary(ctx);
-        ctx.inPrologue = false;
-      }
-      // Flush chunk corrente
+      if (ctx.inPrologue) { flushGlossary(ctx); ctx.inPrologue = false; }
       if (ctx.building) {
         ctx.lastChunk = flushChunk(ctx.building, ctx.chunks, ctx.lastChunk, true);
       }
       ctx.currentArticle = getTextContent(node);
       ctx.currentH2 = ctx.currentArticle;
-      ctx.building = newState(
-        ctx.currentSection,
-        ctx.currentArticle,
-        ctx.currentArticle
-      );
+      ctx.building = newState(ctx.currentSection, ctx.currentArticle, ctx.currentArticle);
       break;
     }
-
     case "h3": {
-      if (ctx.inPrologue) {
-        flushGlossary(ctx);
-        ctx.inPrologue = false;
-      }
-      // Flush chunk corrente
+      if (ctx.inPrologue) { flushGlossary(ctx); ctx.inPrologue = false; }
       if (ctx.building) {
         ctx.lastChunk = flushChunk(ctx.building, ctx.chunks, ctx.lastChunk, true);
       }
       const h3text = getTextContent(node);
-      // Heading prefissato: "H2 > H3" per contesto
-      const heading = ctx.currentH2
-        ? `${ctx.currentH2} > ${h3text}`
-        : h3text;
-      ctx.building = newState(
-        ctx.currentSection,
-        ctx.currentArticle,
-        heading
-      );
+      const heading = ctx.currentH2 ? `${ctx.currentH2} > ${h3text}` : h3text;
+      ctx.building = newState(ctx.currentSection, ctx.currentArticle, heading);
       break;
     }
-
     case "ul": {
-      // Elenco: ogni <li> aggregato nel chunk corrente
       if (ctx.inPrologue) {
-        // Tratta i li come testo di glossario
         node.querySelectorAll("li").forEach((li) => {
           processGlossaryParagraph(ctx, getTextContent(li as HTMLElement));
         });
         return;
       }
       if (!ctx.building) {
-        // Apri chunk implicito con heading dalla sezione corrente
         ctx.building = newState(
-          ctx.currentSection,
-          ctx.currentArticle,
+          ctx.currentSection, ctx.currentArticle,
           ctx.currentArticle || ctx.currentSection
         );
       }
@@ -318,21 +268,13 @@ function processNode(node: HTMLElement, ctx: ParserContext): void {
       checkOverflow(ctx);
       break;
     }
-
     case "p": {
       const text = getTextContent(node);
       if (!text) return;
-
-      if (ctx.inPrologue) {
-        processGlossaryParagraph(ctx, text);
-        return;
-      }
-
+      if (ctx.inPrologue) { processGlossaryParagraph(ctx, text); return; }
       if (!ctx.building) {
-        // Testo prima di qualsiasi heading: apri chunk implicito
         ctx.building = newState(
-          ctx.currentSection,
-          ctx.currentArticle,
+          ctx.currentSection, ctx.currentArticle,
           ctx.currentArticle || ctx.currentSection || "Introduzione"
         );
       }
@@ -340,9 +282,7 @@ function processNode(node: HTMLElement, ctx: ParserContext): void {
       checkOverflow(ctx);
       break;
     }
-
     default: {
-      // Processa i figli ricorsivamente
       node.childNodes.forEach((child) => {
         if (child.nodeType === NodeType.ELEMENT_NODE) {
           processNode(child as HTMLElement, ctx);
@@ -352,16 +292,7 @@ function processNode(node: HTMLElement, ctx: ParserContext): void {
   }
 }
 
-// ─── Entry point principale ──────────────────────────────────────────────────
-
-/**
- * Converte un buffer .docx in chunk RAG semanticamente coerenti.
- *
- * @param buffer  Contenuto binario del file .docx
- * @returns       Array di Chunk ordinati come nel documento
- */
 export async function chunkDocxBuffer(buffer: Buffer): Promise<Chunk[]> {
-  // 1. Converti .docx → HTML con mammoth
   const { value: html } = await mammoth.convertToHtml(
     { buffer },
     {
@@ -379,21 +310,11 @@ export async function chunkDocxBuffer(buffer: Buffer): Promise<Chunk[]> {
     }
   );
 
-  // 2. Parsa l'HTML
   const root = parse(html);
-
-  // 3. Costruisci i chunk
   const ctx: ParserContext = {
-    currentSection: "",
-    currentArticle: "",
-    currentH2: "",
-    building: null,
-    chunks: [],
-    lastChunk: null,
-    inPrologue: true,
-    glossaryLines: [],
-    inGlossaryTerm: false,
-    glossaryTerm: "",
+    currentSection: "", currentArticle: "", currentH2: "",
+    building: null, chunks: [], lastChunk: null,
+    inPrologue: true, glossaryLines: [], inGlossaryTerm: false, glossaryTerm: "",
   };
 
   root.childNodes.forEach((node) => {
@@ -402,24 +323,239 @@ export async function chunkDocxBuffer(buffer: Buffer): Promise<Chunk[]> {
     }
   });
 
-  // 4. Flush finale
   if (ctx.inPrologue) flushGlossary(ctx);
-  if (ctx.building) {
-    flushChunk(ctx.building, ctx.chunks, ctx.lastChunk, true);
+  if (ctx.building) flushChunk(ctx.building, ctx.chunks, ctx.lastChunk, true);
+
+  deduplicateSlugs(ctx.chunks);
+  return ctx.chunks;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARSER MARKDOWN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Estrae metadati dall'header di un chunk pre-strutturato (formato CNI).
+ * Cerca righe come:  **chunk_id:** CNI-ART31-GARANZIE-BASE
+ *                    **sezione:** 3 — Gli eventi assicurati
+ *                    **topic:** ...
+ */
+function extractMdMeta(
+  lines: string[]
+): { chunkId: string; sezione: string; topic: string } {
+  let chunkId = "";
+  let sezione = "";
+  let topic = "";
+  for (const line of lines) {
+    const m = line.match(/\*\*chunk_id:\*\*\s*(.+)/);
+    if (m) chunkId = m[1].trim();
+    const s = line.match(/\*\*sezione:\*\*\s*(.+)/);
+    if (s) sezione = s[1].trim();
+    const t = line.match(/\*\*topic:\*\*\s*(.+)/);
+    if (t) topic = t[1].trim();
+  }
+  return { chunkId, sezione, topic };
+}
+
+/**
+ * Riconosce se il Markdown è nel formato CNI pre-chunked
+ * (contiene almeno un'intestazione "## CHUNK").
+ */
+function isPreChunked(text: string): boolean {
+  return /^## CHUNK\s/m.test(text);
+}
+
+/**
+ * Parser per Markdown CNI pre-chunked.
+ * Ogni sezione ## CHUNK … diventa un chunk autonomo.
+ * I metadati chunk_id / sezione / topic vengono estratti dall'header.
+ */
+function parseMdPreChunked(text: string): Chunk[] {
+  // Split sulle righe ## CHUNK (inclusa la riga stessa)
+  const blocks = text.split(/(?=^## CHUNK\s)/m).filter((b) => b.trim());
+  const chunks: Chunk[] = [];
+
+  for (const block of blocks) {
+    const lines = block.split("\n");
+    const headingLine = lines[0].replace(/^##\s+/, "").trim();
+
+    // Estrai metadati dall'header
+    const { chunkId, sezione, topic } = extractMdMeta(lines);
+
+    // Testo pulito: rimuove le righe di metadati (**chunk_id:**, ecc.)
+    const bodyLines = lines.filter(
+      (l) => !/^\*\*(chunk_id|sezione|topic):\*\*/.test(l)
+    );
+    const text = bodyLines.join("\n").trim();
+
+    // Inferisci section e article dai metadati o dall'heading
+    const sectionVal = sezione || headingLine;
+    // "topic" è la descrizione più granulare → article
+    const articleVal = topic || headingLine;
+
+    chunks.push({
+      id: chunkId ? slugify(chunkId) : slugify(headingLine),
+      section: sectionVal,
+      article: articleVal,
+      heading: headingLine,
+      text,
+      tokens: countTokens(text),
+    });
   }
 
-  // 5. Post-processing: deduplicazione slug
-  const slugCount: Record<string, number> = {};
-  ctx.chunks.forEach((chunk) => {
-    slugCount[chunk.id] = (slugCount[chunk.id] ?? 0) + 1;
-  });
-  const slugSeen: Record<string, number> = {};
-  ctx.chunks.forEach((chunk) => {
-    if (slugCount[chunk.id] > 1) {
-      slugSeen[chunk.id] = (slugSeen[chunk.id] ?? 0) + 1;
-      chunk.id = `${chunk.id}-${slugSeen[chunk.id]}`;
-    }
-  });
+  deduplicateSlugs(chunks);
+  return chunks;
+}
 
-  return ctx.chunks;
+/**
+ * Parser generico per Markdown non pre-chunked.
+ * Split su ## (H2) e ### (H3), con overflow gestito come per docx.
+ */
+function parseMdGeneric(text: string): Chunk[] {
+  const lines = text.split("\n");
+  const chunks: Chunk[] = [];
+  let currentSection = "";
+  let currentArticle = "";
+  let currentHeading = "";
+  let buffer: string[] = [];
+  let lastChunk: Chunk | null = null;
+
+  function flush(forceMerge: boolean) {
+    const content = buffer.join("\n").trim();
+    if (!content) return;
+    const tokens = countTokens(content);
+    if (tokens < TOKEN_MIN && lastChunk && forceMerge) {
+      lastChunk.text += "\n" + content;
+      lastChunk.tokens = countTokens(lastChunk.text);
+      return;
+    }
+    const chunk: Chunk = {
+      id: slugify(currentHeading || currentSection || "sezione"),
+      section: currentSection,
+      article: currentArticle,
+      heading: currentHeading,
+      text: content,
+      tokens,
+    };
+    chunks.push(chunk);
+    lastChunk = chunk;
+    buffer = [];
+  }
+
+  for (const line of lines) {
+    const h1 = line.match(/^#\s+(.+)/);
+    const h2 = line.match(/^##\s+(.+)/);
+    const h3 = line.match(/^###\s+(.+)/);
+
+    if (h1) {
+      flush(true);
+      currentSection = h1[1].trim();
+      currentArticle = "";
+      currentHeading = currentSection;
+      buffer = [];
+    } else if (h2) {
+      flush(true);
+      currentArticle = h2[1].trim();
+      currentHeading = currentArticle;
+      buffer = [line];
+    } else if (h3) {
+      flush(true);
+      currentHeading = h3[1].trim();
+      buffer = [line];
+    } else {
+      buffer.push(line);
+      // Overflow check
+      if (countTokens(buffer.join("\n")) > TOKEN_MAX) {
+        flush(false);
+        buffer = [];
+      }
+    }
+  }
+  flush(true);
+
+  deduplicateSlugs(chunks);
+  return chunks;
+}
+
+/**
+ * Entry point per file .md
+ * Rileva automaticamente il formato (pre-chunked CNI vs generico).
+ */
+export async function chunkMarkdownBuffer(buffer: Buffer): Promise<Chunk[]> {
+  const text = buffer.toString("utf-8");
+  if (isPreChunked(text)) {
+    return parseMdPreChunked(text);
+  }
+  return parseMdGeneric(text);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARSER PDF
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Suddivide il testo estratto da pdf-parse in chunk da TOKEN_MAX token.
+ * Non avendo struttura heading, usa come section il nome del file (passato
+ * dall'esterno) e numera i chunk progressivamente.
+ *
+ * Strategia: split per paragrafi (doppio newline), poi raggruppa fino a
+ * TOKEN_MAX. Produce heading sintetici tipo "Sezione 1 / 12".
+ */
+export async function chunkPdfBuffer(
+  buffer: Buffer,
+  fileName = "documento.pdf"
+): Promise<Chunk[]> {
+  let rawText: string;
+  try {
+    const data = await pdfParse(buffer);
+    rawText = data.text as string;
+  } catch (err) {
+    throw new Error(`pdf-parse: impossibile estrarre testo dal PDF. ${err}`);
+  }
+
+  if (!rawText?.trim()) {
+    throw new Error(
+      "Il PDF non contiene testo estraibile (potrebbe essere scansionato/immagine)."
+    );
+  }
+
+  // Normalizza: molteplici spazi/newline → paragrafi separati da \n\n
+  const paragraphs = rawText
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .split("\n\n")
+    .map((p) => p.replace(/\n/g, " ").replace(/\s+/g, " ").trim())
+    .filter((p) => p.length > 20); // scarta righe vuote o troppo corte
+
+  const baseName = fileName.replace(/\.[^.]+$/, "");
+  const chunks: Chunk[] = [];
+  let buffer_lines: string[] = [];
+  let chunkIndex = 0;
+
+  function flushPdf() {
+    const text = buffer_lines.join("\n").trim();
+    if (!text) return;
+    chunkIndex++;
+    const heading = `${baseName} — parte ${chunkIndex}`;
+    chunks.push({
+      id: slugify(heading),
+      section: baseName,
+      article: baseName,
+      heading,
+      text: `${heading}\n${text}`,
+      tokens: countTokens(text),
+    });
+    buffer_lines = [];
+  }
+
+  for (const para of paragraphs) {
+    buffer_lines.push(para);
+    if (countTokens(buffer_lines.join("\n")) >= TOKEN_MAX) {
+      flushPdf();
+    }
+  }
+  flushPdf(); // flush finale
+
+  deduplicateSlugs(chunks);
+  return chunks;
 }

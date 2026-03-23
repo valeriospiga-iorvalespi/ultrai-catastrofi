@@ -95,11 +95,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
   // ── AGENTE 1: RETRIEVER ──────────────────────────────────────────────────
+  // Sonnet 4.5 per ragionamento semantico più robusto (sinonimi, multi-intent)
   const chunksXml = buildChunksXml(chunks as ChunkRow[]);
   let rawRetrieverResponse: string;
   try {
     const retrieverMsg = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-5",
       max_tokens: 300,
       system: RETRIEVER_SYSTEM_PROMPT,
       messages: [{ role: "user", content: `${chunksXml}\n\nDomanda: ${question}` }],

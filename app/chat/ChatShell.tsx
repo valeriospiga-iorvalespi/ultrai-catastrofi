@@ -212,7 +212,9 @@ export default function ChatShell({ userName }: ChatShellProps) {
             flexShrink: 0 }} />
           <span style={{ fontWeight: 600, fontSize: isMobile ? 13 : 15, color: "#003781",
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {isMobile ? "UltrAI" : `UltrAI ${selectedProduct?.name ?? ""}`}
+            {isMobile
+              ? `UltrAI ${selectedProduct?.short_name ?? selectedProduct?.name ?? ""}`.trim()
+              : `UltrAI ${selectedProduct?.name ?? ""}`}
           </span>
           {!isMobile && (
             <span style={{ background: "#e8f0fb", color: "#003781", borderRadius: 4,

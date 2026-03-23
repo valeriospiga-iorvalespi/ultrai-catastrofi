@@ -114,30 +114,65 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
 
 // ─── Render helpers ─────────────────────────────────────────────────────────
 
-function CitationBadge({ chunkId, onClick }: { chunkId: string; onClick: () => void }) {
+// ✅ Badge mostra numero progressivo [1], [2]… invece dello slug
+function CitationBadge({ num, chunkId, onClick }: { num: number; chunkId: string; onClick: () => void }) {
   return (
     <span onClick={onClick} title={`Apri fonte: ${chunkId}`}
       style={{ display: "inline-block", background: "#fff3cd", border: "1px solid #ffc107",
-        borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 600, color: "#856404",
+        borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 700, color: "#856404",
         cursor: "pointer", marginLeft: 2, marginRight: 2, verticalAlign: "middle" }}
       onMouseEnter={e => (e.currentTarget.style.background = "#ffe69c")}
       onMouseLeave={e => (e.currentTarget.style.background = "#fff3cd")}>
-      [{chunkId.split("-").slice(-2).join("-")}]
+      [{num}]
     </span>
   );
 }
 
-function renderInline(text: string, onCitation: (id: string) => void, key: string): React.ReactNode[] {
+// ✅ Estrae tutti i chunk_id citati nel testo (in ordine di apparizione, deduplicati)
+function extractCitedIds(text: string): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  const re = /\{\{([^}]+)\}\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const id = m[1].trim();
+    if (!seen.has(id)) { seen.add(id); ordered.push(id); }
+  }
+  return ordered;
+}
+
+// Costruisce mappa chunkId → numero progressivo per una risposta
+function buildCitationMap(text: string): Map<string, number> {
+  const ids = extractCitedIds(text);
+  const map = new Map<string, number>();
+  ids.forEach((id, i) => map.set(id, i + 1));
+  return map;
+}
+
+function renderInline(
+  text: string,
+  onCitation: (id: string) => void,
+  key: string,
+  citationMap: Map<string, number>
+): React.ReactNode[] {
   return text.split(/(\{\{[^}]+\}\}|\*\*[^*]+\*\*)/g).map((part, i) => {
     const cite = part.match(/^\{\{([^}]+)\}\}$/);
-    if (cite) return <CitationBadge key={`${key}-c${i}`} chunkId={cite[1].trim()} onClick={() => onCitation(cite[1].trim())} />;
+    if (cite) {
+      const id = cite[1].trim();
+      const num = citationMap.get(id) ?? 0;
+      return <CitationBadge key={`${key}-c${i}`} num={num} chunkId={id} onClick={() => onCitation(id)} />;
+    }
     const bold = part.match(/^\*\*([^*]+)\*\*$/);
     if (bold) return <strong key={`${key}-b${i}`}>{bold[1]}</strong>;
     return <React.Fragment key={`${key}-t${i}`}>{part}</React.Fragment>;
   });
 }
 
-function renderContent(text: string, onCitation: (id: string) => void): React.ReactNode {
+function renderContent(
+  text: string,
+  onCitation: (id: string) => void,
+  citationMap: Map<string, number>
+): React.ReactNode {
   const lines = text.split("\n");
   const nodes: React.ReactNode[] = [];
   let listItems: React.ReactNode[] = [];
@@ -150,12 +185,12 @@ function renderContent(text: string, onCitation: (id: string) => void): React.Re
   };
   lines.forEach((line, i) => {
     const k = `l-${i}`;
-    if (/^##\s+/.test(line)) { flushList(); nodes.push(<div key={k} style={{ fontWeight: 700, fontSize: 14.5, color: "#003781", margin: "12px 0 4px" }}>{renderInline(line.replace(/^##\s+/, ""), onCitation, k)}</div>); return; }
-    if (/^###\s+/.test(line)) { flushList(); nodes.push(<div key={k} style={{ fontWeight: 600, fontSize: 13.5, color: "#2c3e50", margin: "8px 0 2px" }}>{renderInline(line.replace(/^###\s+/, ""), onCitation, k)}</div>); return; }
-    if (/^[-•]\s+/.test(line)) { listItems.push(<li key={k} style={{ marginBottom: 3, lineHeight: 1.55 }}>{renderInline(line.replace(/^[-•]\s+/, ""), onCitation, k)}</li>); return; }
+    if (/^##\s+/.test(line)) { flushList(); nodes.push(<div key={k} style={{ fontWeight: 700, fontSize: 14.5, color: "#003781", margin: "12px 0 4px" }}>{renderInline(line.replace(/^##\s+/, ""), onCitation, k, citationMap)}</div>); return; }
+    if (/^###\s+/.test(line)) { flushList(); nodes.push(<div key={k} style={{ fontWeight: 600, fontSize: 13.5, color: "#2c3e50", margin: "8px 0 2px" }}>{renderInline(line.replace(/^###\s+/, ""), onCitation, k, citationMap)}</div>); return; }
+    if (/^[-•]\s+/.test(line)) { listItems.push(<li key={k} style={{ marginBottom: 3, lineHeight: 1.55 }}>{renderInline(line.replace(/^[-•]\s+/, ""), onCitation, k, citationMap)}</li>); return; }
     if (!line.trim()) { flushList(); nodes.push(<div key={k} style={{ height: 6 }} />); return; }
     flushList();
-    nodes.push(<div key={k} style={{ lineHeight: 1.6, marginBottom: 2 }}>{renderInline(line, onCitation, k)}</div>);
+    nodes.push(<div key={k} style={{ lineHeight: 1.6, marginBottom: 2 }}>{renderInline(line, onCitation, k, citationMap)}</div>);
   });
   flushList();
   return <>{nodes}</>;
@@ -221,8 +256,14 @@ function AssistantBubble({ message, onCopy, onExport, onShowSources, onCitationC
 }) {
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<null | "up" | "down">(null);
-  const hasSources = message.sourceIds && message.sourceIds.length > 0;
   const timeStr = message.timestamp.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+  // ✅ Calcola mappa chunk_id → numero progressivo basata sul testo
+  const citationMap = buildCitationMap(message.content);
+
+  // ✅ Solo i chunk effettivamente citati nel testo (non tutti i sourceIds recuperati)
+  const citedIds = extractCitedIds(message.content);
+  const hasCitations = citedIds.length > 0;
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -238,16 +279,17 @@ function AssistantBubble({ message, onCopy, onExport, onShowSources, onCitationC
           </div>
           <span style={{ fontSize: 12, fontWeight: 600, color: "#003781" }}>UltrAI</span>
         </div>
-        {renderContent(message.content, onCitationClick)}
+        {renderContent(message.content, onCitationClick, citationMap)}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingLeft: 4, flexWrap: "wrap" }}>
-        {hasSources && (
-          <button onClick={() => onShowSources(message.sourceIds!)}
+        {/* ✅ Mostra solo le fonti citate nel testo */}
+        {hasCitations && (
+          <button onClick={() => onShowSources(citedIds)}
             style={{ background: "#e8f0fb", border: "1px solid #c5d8f5", borderRadius: 4,
               padding: "3px 8px", fontSize: 11.5, color: "#003781", fontWeight: 600, cursor: "pointer" }}
             onMouseEnter={e => (e.currentTarget.style.background = "#d0e4f7")}
             onMouseLeave={e => (e.currentTarget.style.background = "#e8f0fb")}>
-            📄 {message.sourceIds!.length} {message.sourceIds!.length === 1 ? "fonte" : "fonti"} →
+            📄 {citedIds.length} {citedIds.length === 1 ? "fonte" : "fonti"} →
           </button>
         )}
         <span style={{ fontSize: 11.5, color: "#9aa5b4" }}>{timeStr}</span>

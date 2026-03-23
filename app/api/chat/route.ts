@@ -1,5 +1,7 @@
 /**
  * app/api/chat/route.ts
+ * POST /api/chat
+ * Esegue Retriever → Orchestratore e salva i messaggi su Supabase.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,6 +18,7 @@ interface ChatRequest {
   question: string;
   productId: string;
   history: Message[];
+  conversationId?: string; // ✅ NUOVO: se presente salva i messaggi su DB
 }
 
 interface ChunkRow {
@@ -26,43 +29,33 @@ interface ChunkRow {
 }
 
 function makeSupabaseClient(request: NextRequest) {
-  const response = NextResponse.next();
-  return {
-    supabase: createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        cookies: {
-          get(name: string) { return request.cookies.get(name)?.value; },
-          set(name: string, value: string, options: Record<string, unknown>) { response.cookies.set({ name, value, ...options }); },
-          remove(name: string, options: Record<string, unknown>) { response.cookies.set({ name, value: "", ...options }); },
-        },
-      }
-    ),
-    response,
-  };
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: {
+        getAll() { return request.cookies.getAll(); },
+        setAll() {},
+      },
+    }
+  );
 }
 
 function buildChunksXml(chunks: ChunkRow[]): string {
   return chunks.map((c, i) => {
-    const noteAttr = c.note ? ` note="${escapeAttr(c.note)}"` : "";
-    return `<chunk index="${i}" id="${escapeAttr(c.chunk_id)}"${noteAttr}>${escapeText(c.text)}</chunk>`;
+    const noteAttr = c.note ? ` note="${escAttr(c.note)}"` : "";
+    return `<chunk index="${i}" id="${escAttr(c.chunk_id)}"${noteAttr}>${escText(c.text)}</chunk>`;
   }).join("\n");
 }
 
 function buildSourcesXml(chunks: ChunkRow[]): string {
-  return chunks.map((c) =>
-    `<source id="${escapeAttr(c.chunk_id)}" heading="${escapeAttr(c.heading)}">\n${escapeText(c.text)}\n</source>`
+  return chunks.map(c =>
+    `<source id="${escAttr(c.chunk_id)}" heading="${escAttr(c.heading)}">\n${escText(c.text)}\n</source>`
   ).join("\n");
 }
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-}
-
-function escapeText(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+function escAttr(s: string) { return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
+function escText(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
 function parseRetrieverResponse(raw: string): number[] {
   const match = raw.match(/\[[\d,\s]*\]/);
@@ -79,48 +72,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: "Body non valido" }, { status: 400 }); }
 
-  const { question, productId, history } = body;
+  const { question, productId, history, conversationId } = body;
   if (!question?.trim() || !productId?.trim()) {
-    return NextResponse.json({ error: "question e productId sono obbligatori" }, { status: 400 });
+    return NextResponse.json({ error: "question e productId obbligatori" }, { status: 400 });
   }
 
-  const { supabase } = makeSupabaseClient(request);
+  const supabase = makeSupabaseClient(request);
   const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
-  }
+  if (authError || !user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
+  // Carica tutti i chunk del prodotto
   const { data: chunks, error: dbError } = await supabase
     .from("chunks")
     .select("chunk_id, heading, text, note")
     .eq("product_id", productId)
     .order("created_at", { ascending: true });
 
-  if (dbError) {
-    console.error("[chat] DB error:", dbError);
-    return NextResponse.json({ error: "Errore database" }, { status: 500 });
-  }
-
-  if (!chunks || chunks.length === 0) {
+  if (dbError) return NextResponse.json({ error: "Errore database" }, { status: 500 });
+  if (!chunks || chunks.length === 0)
     return NextResponse.json({ error: "Nessun chunk trovato per questo prodotto" }, { status: 404 });
-  }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
+  // ── AGENTE 1: RETRIEVER ──────────────────────────────────────────────────
   const chunksXml = buildChunksXml(chunks as ChunkRow[]);
-  const retrieverUserMessage = `${chunksXml}\n\nDomanda: ${question}`;
-
   let rawRetrieverResponse: string;
   try {
     const retrieverMsg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 300,
       system: RETRIEVER_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: retrieverUserMessage }],
+      messages: [{ role: "user", content: `${chunksXml}\n\nDomanda: ${question}` }],
     });
     rawRetrieverResponse = retrieverMsg.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { type: "text"; text: string }).text)
+      .filter(b => b.type === "text")
+      .map(b => (b as { type: "text"; text: string }).text)
       .join("") ?? "[]";
   } catch (err) {
     console.error("[chat] Retriever error:", err);
@@ -130,20 +116,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const selectedIndices = parseRetrieverResponse(rawRetrieverResponse);
   const allChunks = chunks as ChunkRow[];
   const selectedChunks: ChunkRow[] = selectedIndices.length > 0
-    ? selectedIndices.filter((i) => i < allChunks.length).slice(0, 5).map((i) => allChunks[i])
+    ? selectedIndices.filter(i => i < allChunks.length).slice(0, 5).map(i => allChunks[i])
     : [];
-  const selectedChunkIds = selectedChunks.map((c) => c.chunk_id);
+  const selectedChunkIds = selectedChunks.map(c => c.chunk_id);
 
-  // FIX: usa .eq("id", productId) invece di .eq("product_id", productId)
+  // ── AGENTE 2: ORCHESTRATORE ──────────────────────────────────────────────
   const { data: productRow } = await supabase
     .from("products")
     .select("persona, domain, guardrails, language")
     .eq("id", productId)
     .single();
 
-  const productConfig = productRow ?? {};
-  const orchestratorSystem = buildOrchestratorPrompt(productConfig);
-
+  const orchestratorSystem = buildOrchestratorPrompt(productRow ?? {});
   const sourcesXml = selectedChunks.length > 0
     ? buildSourcesXml(selectedChunks)
     : "<source>Nessun chunk rilevante trovato.</source>";
@@ -162,17 +146,49 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       messages: orchestratorMessages,
     });
     answer = orchestratorMsg.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { type: "text"; text: string }).text)
+      .filter(b => b.type === "text")
+      .map(b => (b as { type: "text"; text: string }).text)
       .join("") ?? "";
   } catch (err) {
     console.error("[chat] Orchestrator error:", err);
     return NextResponse.json({ error: "Errore Orchestrator" }, { status: 502 });
   }
 
+  // ── SALVA MESSAGGI SU DB (se conversationId presente) ────────────────────
+  if (conversationId) {
+    try {
+      // Salva messaggio utente
+      await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        role: "user",
+        content: question,
+        source_ids: [],
+      });
+      // Salva risposta assistente
+      await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        role: "assistant",
+        content: answer,
+        source_ids: selectedChunkIds,
+      });
+      // Aggiorna updated_at conversazione
+      await supabase
+        .from("conversations")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", conversationId);
+    } catch (err) {
+      console.warn("[chat] Salvataggio messaggi fallito:", err);
+    }
+  }
+
+  // ── AUDIT LOG ────────────────────────────────────────────────────────────
   try {
     await supabase.from("audit_log").insert({
-      user_id: user.id, product_id: productId, question, answer, chunks_used: selectedChunkIds,
+      user_id: user.id,
+      product_id: productId,
+      question,
+      answer,
+      chunks_used: selectedChunkIds,
     });
   } catch (err) {
     console.warn("[chat] Audit log insert failed:", err);

@@ -44,7 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   let query = supabase
     .from("chunks")
-    .select("id, chunk_id, heading, section, article, tokens, created_at, product_id")
+    .select("id, chunk_id, heading, section, article, text, tokens, created_at, product_id")
     .order("created_at", { ascending: true });
 
   if (productId && productId !== "all") {

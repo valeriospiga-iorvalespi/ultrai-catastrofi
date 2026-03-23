@@ -8,18 +8,17 @@
  *   .docx  →  mammoth → HTML → parser strutturato
  *   .md    →  split per heading ## CHUNK (formato CNI chunked)
  *             oppure split generico per ## / ### se non è pre-chunked
- *   .pdf   →  pdf-parse → testo grezzo → split per token con heading sintetico
+ *   .pdf   →  pdfjs-dist (legacy) → testo grezzo → split per token
  *
- * Dipendenze:  mammoth  node-html-parser  pdf-parse
+ * Dipendenze:  mammoth  node-html-parser  pdfjs-dist
  * Next.js 14 / TypeScript
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import mammoth from "mammoth";
 import { parse, HTMLElement, NodeType } from "node-html-parser";
-// pdf-parse non ha tipi ufficiali — import con require per compatibilità Edge/Node
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+// pdfjs-dist/legacy funziona in Node.js puro senza canvas o DOMMatrix
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 // ─── Interfaccia pubblica ────────────────────────────────────────────────────
 
@@ -494,12 +493,9 @@ export async function chunkMarkdownBuffer(buffer: Buffer): Promise<Chunk[]> {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Suddivide il testo estratto da pdf-parse in chunk da TOKEN_MAX token.
- * Non avendo struttura heading, usa come section il nome del file (passato
- * dall'esterno) e numera i chunk progressivamente.
- *
- * Strategia: split per paragrafi (doppio newline), poi raggruppa fino a
- * TOKEN_MAX. Produce heading sintetici tipo "Sezione 1 / 12".
+ * Estrae testo da PDF con pdfjs-dist/legacy (nessuna dipendenza nativa,
+ * funziona su Vercel/Node.js senza canvas o DOMMatrix).
+ * Suddivide in chunk da TOKEN_MAX token con heading sintetici.
  */
 export async function chunkPdfBuffer(
   buffer: Buffer,
@@ -507,10 +503,26 @@ export async function chunkPdfBuffer(
 ): Promise<Chunk[]> {
   let rawText: string;
   try {
-    const data = await pdfParse(buffer);
-    rawText = data.text as string;
+    const uint8 = new Uint8Array(buffer);
+    const loadingTask = pdfjsLib.getDocument({
+      data: uint8,
+      useWorkerFetch: false,
+      isEvalSupported: false,
+    });
+    const pdf = await loadingTask.promise;
+    const pageTexts: string[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((item: any) => item.str ?? "")
+        .join(" ");
+      pageTexts.push(pageText);
+    }
+    rawText = pageTexts.join("\n\n");
   } catch (err) {
-    throw new Error(`pdf-parse: impossibile estrarre testo dal PDF. ${err}`);
+    throw new Error(`pdfjs-dist: impossibile estrarre testo dal PDF. ${err}`);
   }
 
   if (!rawText?.trim()) {
@@ -525,15 +537,15 @@ export async function chunkPdfBuffer(
     .replace(/\n{3,}/g, "\n\n")
     .split("\n\n")
     .map((p) => p.replace(/\n/g, " ").replace(/\s+/g, " ").trim())
-    .filter((p) => p.length > 20); // scarta righe vuote o troppo corte
+    .filter((p) => p.length > 20);
 
   const baseName = fileName.replace(/\.[^.]+$/, "");
   const chunks: Chunk[] = [];
-  let buffer_lines: string[] = [];
+  let bufLines: string[] = [];
   let chunkIndex = 0;
 
   function flushPdf() {
-    const text = buffer_lines.join("\n").trim();
+    const text = bufLines.join("\n").trim();
     if (!text) return;
     chunkIndex++;
     const heading = `${baseName} — parte ${chunkIndex}`;
@@ -545,16 +557,14 @@ export async function chunkPdfBuffer(
       text: `${heading}\n${text}`,
       tokens: countTokens(text),
     });
-    buffer_lines = [];
+    bufLines = [];
   }
 
   for (const para of paragraphs) {
-    buffer_lines.push(para);
-    if (countTokens(buffer_lines.join("\n")) >= TOKEN_MAX) {
-      flushPdf();
-    }
+    bufLines.push(para);
+    if (countTokens(bufLines.join("\n")) >= TOKEN_MAX) flushPdf();
   }
-  flushPdf(); // flush finale
+  flushPdf();
 
   deduplicateSlugs(chunks);
   return chunks;

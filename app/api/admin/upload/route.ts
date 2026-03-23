@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { chunkDocxBuffer, chunkMarkdownBuffer, chunkPdfBuffer } from "@/lib/chunker";
+import { chunkDocxBuffer, chunkMarkdownBuffer } from "@/lib/chunker";
 import type { Chunk } from "@/lib/chunker";
 
 // ─── MIME type → content-type per lo Storage ────────────────────────────────
@@ -17,7 +17,6 @@ import type { Chunk } from "@/lib/chunker";
 const CONTENT_TYPE: Record<string, string> = {
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".md":   "text/markdown",
-  ".pdf":  "application/pdf",
 };
 
 // ─── Supabase client ─────────────────────────────────────────────────────────
@@ -94,7 +93,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const ext          = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] ?? "";
 
   // ── 2. Validazione estensione ──────────────────────────────────────────────
-  const ALLOWED = [".docx", ".md", ".pdf"];
+  const ALLOWED = [".docx", ".md"];
   if (!ALLOWED.includes(ext)) {
     return NextResponse.json(
       { error: `Formato non supportato: ${ext || "(nessuno)"}. Accettati: ${ALLOWED.join(", ")}` },
@@ -124,11 +123,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     if (ext === ".docx") {
       chunks = await chunkDocxBuffer(buffer);
-    } else if (ext === ".md") {
-      chunks = await chunkMarkdownBuffer(buffer);
     } else {
-      // .pdf
-      chunks = await chunkPdfBuffer(buffer, fileName);
+      // .md
+      chunks = await chunkMarkdownBuffer(buffer);
     }
   } catch (err) {
     console.error("[upload] chunking:", err);

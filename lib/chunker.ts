@@ -8,17 +8,14 @@
  *   .docx  →  mammoth → HTML → parser strutturato
  *   .md    →  split per heading ## CHUNK (formato CNI chunked)
  *             oppure split generico per ## / ### se non è pre-chunked
- *   .pdf   →  pdfjs-dist (legacy) → testo grezzo → split per token
  *
- * Dipendenze:  mammoth  node-html-parser  pdfjs-dist
+ * Dipendenze:  mammoth  node-html-parser
  * Next.js 14 / TypeScript
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import mammoth from "mammoth";
 import { parse, HTMLElement, NodeType } from "node-html-parser";
-// pdfjs-dist/legacy funziona in Node.js puro senza canvas o DOMMatrix
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 // ─── Interfaccia pubblica ────────────────────────────────────────────────────
 
@@ -488,84 +485,4 @@ export async function chunkMarkdownBuffer(buffer: Buffer): Promise<Chunk[]> {
   return parseMdGeneric(text);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PARSER PDF
-// ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Estrae testo da PDF con pdfjs-dist/legacy (nessuna dipendenza nativa,
- * funziona su Vercel/Node.js senza canvas o DOMMatrix).
- * Suddivide in chunk da TOKEN_MAX token con heading sintetici.
- */
-export async function chunkPdfBuffer(
-  buffer: Buffer,
-  fileName = "documento.pdf"
-): Promise<Chunk[]> {
-  let rawText: string;
-  try {
-    const uint8 = new Uint8Array(buffer);
-    const loadingTask = pdfjsLib.getDocument({
-      data: uint8,
-      useWorkerFetch: false,
-      isEvalSupported: false,
-    });
-    const pdf = await loadingTask.promise;
-    const pageTexts: string[] = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const pageText = content.items
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((item: any) => item.str ?? "")
-        .join(" ");
-      pageTexts.push(pageText);
-    }
-    rawText = pageTexts.join("\n\n");
-  } catch (err) {
-    throw new Error(`pdfjs-dist: impossibile estrarre testo dal PDF. ${err}`);
-  }
-
-  if (!rawText?.trim()) {
-    throw new Error(
-      "Il PDF non contiene testo estraibile (potrebbe essere scansionato/immagine)."
-    );
-  }
-
-  // Normalizza: molteplici spazi/newline → paragrafi separati da \n\n
-  const paragraphs = rawText
-    .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .split("\n\n")
-    .map((p) => p.replace(/\n/g, " ").replace(/\s+/g, " ").trim())
-    .filter((p) => p.length > 20);
-
-  const baseName = fileName.replace(/\.[^.]+$/, "");
-  const chunks: Chunk[] = [];
-  let bufLines: string[] = [];
-  let chunkIndex = 0;
-
-  function flushPdf() {
-    const text = bufLines.join("\n").trim();
-    if (!text) return;
-    chunkIndex++;
-    const heading = `${baseName} — parte ${chunkIndex}`;
-    chunks.push({
-      id: slugify(heading),
-      section: baseName,
-      article: baseName,
-      heading,
-      text: `${heading}\n${text}`,
-      tokens: countTokens(text),
-    });
-    bufLines = [];
-  }
-
-  for (const para of paragraphs) {
-    bufLines.push(para);
-    if (countTokens(bufLines.join("\n")) >= TOKEN_MAX) flushPdf();
-  }
-  flushPdf();
-
-  deduplicateSlugs(chunks);
-  return chunks;
-}

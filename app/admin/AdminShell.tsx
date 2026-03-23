@@ -325,12 +325,12 @@ export default function AdminShell() {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>File (.docx, .md, .pdf)</label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>File (.docx, .md)</label>
               <div style={{ border: "2px dashed #b8c9e8", borderRadius: 8, padding: "24px 20px",
                 textAlign: "center", cursor: "pointer", background: file ? "#f0f8ff" : "#fafcff" }}
                 onClick={() => fileInputRef.current?.click()}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && /\.(docx|md|pdf)$/i.test(f.name)) setFile(f); }}>
+                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && /\.(docx|md)$/i.test(f.name)) setFile(f); }}>
                 {file ? (
                   <div>
                     <div style={{ fontSize: 28, marginBottom: 6 }}>📄</div>
@@ -348,11 +348,11 @@ export default function AdminShell() {
                     <div style={{ fontSize: 14, color: "#5a6a85" }}>
                       {isMobile ? "Tocca per scegliere il file" : <>Trascina qui o <span style={{ color: "#003781", fontWeight: 600 }}>clicca per sfogliare</span></>}
                     </div>
-                    <div style={{ fontSize: 12, color: "#9aa5b4", marginTop: 4 }}>.docx · .md · .pdf</div>
+                    <div style={{ fontSize: 12, color: "#9aa5b4", marginTop: 4 }}>.docx · .md</div>
                   </div>
                 )}
               </div>
-              <input ref={fileInputRef} type="file" accept=".docx,.md,.pdf" style={{ display: "none" }}
+              <input ref={fileInputRef} type="file" accept=".docx,.md" style={{ display: "none" }}
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </div>
 

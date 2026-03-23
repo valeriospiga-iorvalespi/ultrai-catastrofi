@@ -114,16 +114,19 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
 
 // ─── Render helpers ─────────────────────────────────────────────────────────
 
-// ✅ Badge mostra numero progressivo [1], [2]… invece dello slug
+// Badge mostra [1 · CNI-ART31] — numero + chunk_id abbreviato
 function CitationBadge({ num, chunkId, onClick }: { num: number; chunkId: string; onClick: () => void }) {
+  // Prende i primi 2 segmenti del slug in maiuscolo: "cni-art31-garanzie-base" → "CNI-ART31"
+  const shortId = chunkId.toUpperCase().split("-").slice(0, 2).join("-");
   return (
     <span onClick={onClick} title={`Apri fonte: ${chunkId}`}
-      style={{ display: "inline-block", background: "#fff3cd", border: "1px solid #ffc107",
-        borderRadius: 4, padding: "1px 6px", fontSize: 11, fontWeight: 700, color: "#856404",
-        cursor: "pointer", marginLeft: 2, marginRight: 2, verticalAlign: "middle" }}
+      style={{ display: "inline-flex", alignItems: "center", gap: 3,
+        background: "#fff3cd", border: "1px solid #ffc107",
+        borderRadius: 4, padding: "1px 6px", fontSize: 10.5, fontWeight: 700, color: "#856404",
+        cursor: "pointer", marginLeft: 2, marginRight: 2, verticalAlign: "middle", whiteSpace: "nowrap" }}
       onMouseEnter={e => (e.currentTarget.style.background = "#ffe69c")}
       onMouseLeave={e => (e.currentTarget.style.background = "#fff3cd")}>
-      [{num}]
+      [{num}]<span style={{ opacity: 0.65, fontWeight: 500, fontSize: 10 }}>· {shortId}</span>
     </span>
   );
 }
@@ -209,6 +212,51 @@ function TypingIndicator() {
   );
 }
 
+// Mini-renderer Markdown per il pannello fonti
+// Gestisce: **grassetto**, ## heading, ### heading, • / - liste, testo normale
+function renderChunkText(text: string): React.ReactNode {
+  const lines = text.split("\n");
+  const nodes: React.ReactNode[] = [];
+  let listItems: React.ReactNode[] = [];
+  let ki = 0;
+
+  function inlineRender(line: string, k: string): React.ReactNode {
+    return line.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
+      const bold = part.match(/^\*\*([^*]+)\*\*$/);
+      if (bold) return <strong key={`${k}-b${i}`}>{bold[1]}</strong>;
+      return <React.Fragment key={`${k}-t${i}`}>{part}</React.Fragment>;
+    });
+  }
+
+  function flushList() {
+    if (listItems.length) {
+      nodes.push(<ul key={`ul-${ki++}`} style={{ margin: "4px 0 4px 16px", padding: 0 }}>{listItems}</ul>);
+      listItems = [];
+    }
+  }
+
+  lines.forEach((line, i) => {
+    const k = `sc-${i}`;
+    if (/^## /.test(line)) {
+      flushList();
+      nodes.push(<div key={k} style={{ fontWeight: 700, fontSize: 12.5, color: "#003781", margin: "10px 0 3px" }}>{inlineRender(line.replace(/^## /, ""), k)}</div>);
+    } else if (/^### /.test(line)) {
+      flushList();
+      nodes.push(<div key={k} style={{ fontWeight: 600, fontSize: 12, color: "#2c3e50", margin: "7px 0 2px" }}>{inlineRender(line.replace(/^### /, ""), k)}</div>);
+    } else if (/^[-•]\s+/.test(line)) {
+      listItems.push(<li key={k} style={{ marginBottom: 2, lineHeight: 1.55, fontSize: 12 }}>{inlineRender(line.replace(/^[-•]\s+/, ""), k)}</li>);
+    } else if (!line.trim()) {
+      flushList();
+      nodes.push(<div key={k} style={{ height: 4 }} />);
+    } else {
+      flushList();
+      nodes.push(<div key={k} style={{ lineHeight: 1.6, fontSize: 12, marginBottom: 1 }}>{inlineRender(line, k)}</div>);
+    }
+  });
+  flushList();
+  return <>{nodes}</>;
+}
+
 function SourcesPanel({ chunks, onClose, isMobile }: { chunks: ChunkDetail[]; onClose: () => void; isMobile?: boolean }) {
   return (
     <div style={{ position: "fixed", top: 0, right: 0, width: isMobile ? "100vw" : 420,
@@ -228,18 +276,25 @@ function SourcesPanel({ chunks, onClose, isMobile }: { chunks: ChunkDetail[]; on
           <div style={{ padding: "24px 18px", color: "#aaa", fontSize: 13, textAlign: "center" }}>Nessuna fonte disponibile.</div>
         ) : chunks.map((c, i) => (
           <div key={c.chunk_id} style={{ padding: "12px 18px", borderBottom: "1px solid #f0f0f0" }}>
+            {/* Header: numero + chunk_id + heading */}
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
               <span style={{ background: "#003781", color: "#fff", borderRadius: "50%", width: 20, height: 20,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
-              <div>
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 600, flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 12.5, color: "#003781", lineHeight: 1.4 }}>{c.heading}</div>
+                {/* chunk_id visibile come tag */}
+                <span style={{ display: "inline-block", marginTop: 3, background: "#f0f4fb",
+                  border: "1px solid #c5d8f5", borderRadius: 3, padding: "1px 6px",
+                  fontSize: 10, color: "#5a6a85", fontFamily: "monospace" }}>{c.chunk_id}</span>
                 {c.section && <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>{c.section}</div>}
               </div>
             </div>
-            <div style={{ fontSize: 12.5, color: "#444", lineHeight: 1.65, background: "#f8fafd",
+            {/* Testo con rendering Markdown */}
+            <div style={{ color: "#444", lineHeight: 1.65, background: "#f8fafd",
               borderRadius: 6, padding: "10px 12px", border: "1px solid #e8f0fb",
-              whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto" }}>
-              {c.text.replace(c.heading, "").trim()}
+              maxHeight: 260, overflowY: "auto" }}>
+              {renderChunkText(c.text.replace(c.heading, "").trim())}
             </div>
           </div>
         ))}

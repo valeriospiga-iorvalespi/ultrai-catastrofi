@@ -18,10 +18,12 @@ function makeClient(request: NextRequest) {
   );
 }
 
+// ✅ Next.js 16: params è una Promise
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const { id } = await params;
   const supabase = makeClient(request);
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
@@ -36,8 +38,8 @@ export async function PATCH(
       title: body.title?.trim() || "Nuova chat",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", params.id)
-    .eq("user_id", user.id) // sicurezza: solo le proprie
+    .eq("id", id)
+    .eq("user_id", user.id)
     .select("id, title, updated_at")
     .single();
 
@@ -47,8 +49,9 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const { id } = await params;
   const supabase = makeClient(request);
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
@@ -56,8 +59,8 @@ export async function DELETE(
   const { error: dbError } = await supabase
     .from("conversations")
     .delete()
-    .eq("id", params.id)
-    .eq("user_id", user.id); // sicurezza: solo le proprie
+    .eq("id", id)
+    .eq("user_id", user.id);
 
   if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
   return NextResponse.json({ success: true });

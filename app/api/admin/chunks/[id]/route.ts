@@ -18,68 +18,54 @@ function makeClient(request: NextRequest) {
   );
 }
 
-async function checkAdmin(request: NextRequest, supabase: ReturnType<typeof makeClient>) {
+async function checkAdmin(supabase: ReturnType<typeof makeClient>) {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return false;
   return user.email === process.env.ADMIN_EMAIL;
 }
 
+// ✅ Next.js 16: params è una Promise
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const { id } = await params;
   const supabase = makeClient(request);
-  if (!(await checkAdmin(request, supabase))) {
+  if (!(await checkAdmin(supabase)))
     return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
-  }
 
-  const { error } = await supabase
-    .from("chunks")
-    .delete()
-    .eq("id", params.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
+  const { error } = await supabase.from("chunks").delete().eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
 
-// ✅ NUOVO: aggiorna note e/o heading di un chunk
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const { id } = await params;
   const supabase = makeClient(request);
-  if (!(await checkAdmin(request, supabase))) {
+  if (!(await checkAdmin(supabase)))
     return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
-  }
 
   let body: { note?: string; heading?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Body non valido" }, { status: 400 });
-  }
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ error: "Body non valido" }, { status: 400 }); }
 
   const updates: Record<string, string | null> = {};
   if (body.note !== undefined) updates.note = body.note || null;
   if (body.heading !== undefined) updates.heading = body.heading;
 
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(updates).length === 0)
     return NextResponse.json({ error: "Nessun campo da aggiornare" }, { status: 400 });
-  }
 
   const { data, error } = await supabase
     .from("chunks")
     .update(updates)
-    .eq("id", params.id)
+    .eq("id", id)
     .select("id, chunk_id, heading, note")
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true, chunk: data });
 }

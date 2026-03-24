@@ -12,7 +12,7 @@ interface Chunk {
 
 interface Product {
   id: string; name: string; short_name: string;
-  chunk_count: number; last_updated: string;
+  chunk_count: number; last_updated: string; active: boolean;
 }
 
 type Tab = "upload" | "chunks" | "products" | "config";
@@ -248,6 +248,23 @@ export default function AdminShell() {
       body: JSON.stringify({ id, name, short_name: shortName }) });
     if (!res.ok) throw new Error("Rinomina fallita");
     setProducts((prev) => prev.map((p) => p.id === id ? { ...p, name, short_name: shortName } : p));
+  };
+
+  const handleToggleProductActive = async (id: string, currentActive: boolean) => {
+    const newActive = !currentActive;
+    const label = newActive ? "riattivare" : "disattivare";
+    if (!confirm(`Vuoi ${label} questo prodotto? ${newActive ? "Tornerà visibile in chat." : "Non sarà più visibile in chat ma resterà nel DB."}`)) return;
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, active: newActive }),
+      });
+      if (!res.ok) throw new Error();
+      setProducts((prev) => prev.map((p) => p.id === id ? { ...p, active: newActive } : p));
+    } catch {
+      alert("Operazione fallita. Riprova.");
+    }
   };
 
   const handleDeleteChunk = async (id: string) => {
@@ -504,12 +521,25 @@ export default function AdminShell() {
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
               {products.map((product) => (
                 <div key={product.id} style={{ background: "#fff", borderRadius: 12, padding: isMobile ? 16 : 24,
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1px solid #e8ecf0" }}>
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+                  border: `1px solid ${product.active ? "#e8ecf0" : "#ffd6d6"}`,
+                  opacity: product.active ? 1 : 0.75 }}>
                   <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "#e8f0fb",
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>📦</div>
+                    <div style={{ width: 36, height: 36, borderRadius: 8,
+                      background: product.active ? "#e8f0fb" : "#fff0f0",
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                      {product.active ? "📦" : "🔒"}
+                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: "#2c3e50", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#2c3e50", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.name}</div>
+                        <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                          background: product.active ? "#e6f9ee" : "#fff0f0",
+                          color: product.active ? "#1a7a3a" : "#c0392b",
+                          border: `1px solid ${product.active ? "#9fe0b0" : "#f5c1c1"}` }}>
+                          {product.active ? "● Attivo" : "○ Inattivo"}
+                        </span>
+                      </div>
                       {product.short_name && <div style={{ fontSize: 12, color: "#5a6a85" }}>{product.short_name}</div>}
                       <div style={{ fontSize: 10, color: "#9aa5b4", fontFamily: "monospace", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>{product.id}</div>
                     </div>
@@ -528,10 +558,21 @@ export default function AdminShell() {
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <RenameProductInline product={product} onRename={handleRenameProduct} />
-                    <button onClick={() => { setSelectedProduct(product.id); setTab("upload"); }}
-                      style={{ flex: 1, background: "#003781", border: "none", borderRadius: 6,
-                        padding: "8px 0", fontSize: 12, color: "#fff", fontWeight: 600, cursor: "pointer" }}>
-                      ⬆️ Carica
+                    {product.active ? (
+                      <button onClick={() => { setSelectedProduct(product.id); setTab("upload"); }}
+                        style={{ flex: 1, background: "#003781", border: "none", borderRadius: 6,
+                          padding: "8px 0", fontSize: 12, color: "#fff", fontWeight: 600, cursor: "pointer" }}>
+                        ⬆️ Carica
+                      </button>
+                    ) : null}
+                    <button
+                      onClick={() => handleToggleProductActive(product.id, product.active)}
+                      title={product.active ? "Disattiva prodotto (non visibile in chat)" : "Riattiva prodotto"}
+                      style={{ background: product.active ? "#fff0f0" : "#f0fff4",
+                        border: `1px solid ${product.active ? "#f5c1c1" : "#9fe0b0"}`,
+                        borderRadius: 6, padding: "8px 10px", fontSize: 13, cursor: "pointer",
+                        color: product.active ? "#c0392b" : "#1a7a3a", flexShrink: 0 }}>
+                      {product.active ? "🔒" : "🔓"}
                     </button>
                   </div>
                 </div>

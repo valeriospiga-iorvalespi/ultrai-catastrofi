@@ -1,110 +1,109 @@
-// app/api/admin/products/route.ts
-// GET   /api/admin/products           → lista tutti i prodotti
-// POST  /api/admin/products           → crea nuovo prodotto
-// PATCH /api/admin/products           → rinomina prodotto { id, name, short_name }
+/**
+ * app/api/admin/products/route.ts
+ * GET  — lista tutti i prodotti (inclusi inattivi, per l'admin)
+ * POST — crea nuovo prodotto
+ * PATCH — rinomina o toggling active
+ */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
-function makeClient(request: NextRequest) {
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL!;
+
+async function getSupabase() {
+  const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll(); },
-        setAll() {},
+        getAll: () => cookieStore.getAll(),
+        setAll: (toSet) => toSet.forEach(({ name, value, options }) =>
+          cookieStore.set(name, value, options)),
       },
     }
   );
 }
 
-async function checkAdmin(supabase: ReturnType<typeof makeClient>) {
-  const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user) return false;
-  return user.email === process.env.ADMIN_EMAIL;
-}
+// ─── GET ─────────────────────────────────────────────────────────────────────
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  const supabase = makeClient(request);
-  if (!(await checkAdmin(supabase)))
-    return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
+export async function GET() {
+  const supabase = await getSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.email !== ADMIN_EMAIL) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const { data: products, error } = await supabase
+  const { data, error } = await supabase
     .from("products")
-    .select("id, name, short_name, last_upload_at, chunk_count")
+    .select("id, name, short_name, chunk_count, last_upload_at, active")
     .order("name");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const mapped = (products ?? []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    short_name: p.short_name ?? "",
-    chunk_count: p.chunk_count ?? 0,
+  const products = (data ?? []).map((p) => ({
+    id:           p.id,
+    name:         p.name,
+    short_name:   p.short_name ?? "",
+    chunk_count:  p.chunk_count ?? 0,
     last_updated: p.last_upload_at ?? "-",
+    active:       p.active ?? true,
   }));
 
-  return NextResponse.json({ products: mapped });
+  return NextResponse.json({ products });
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  const supabase = makeClient(request);
-  if (!(await checkAdmin(supabase)))
-    return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
+// ─── POST ────────────────────────────────────────────────────────────────────
 
-  let body: { name: string; short_name?: string };
-  try { body = await request.json(); }
-  catch { return NextResponse.json({ error: "Body non valido" }, { status: 400 }); }
-
-  if (!body.name?.trim())
-    return NextResponse.json({ error: "Il campo 'name' è obbligatorio" }, { status: 400 });
-
-  const { data, error } = await supabase
-    .from("products")
-    .insert({
-      name: body.name.trim(),
-      short_name: body.short_name?.trim() ?? null,
-      chunk_count: 0,
-    })
-    .select("id, name, short_name, chunk_count")
-    .single();
-
-  if (error) {
-    console.error("[products] INSERT error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+export async function POST(req: NextRequest) {
+  const supabase = await getSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.email !== ADMIN_EMAIL) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json({ product: data });
-}
-
-export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  const supabase = makeClient(request);
-  if (!(await checkAdmin(supabase)))
-    return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
-
-  let body: { id: string; name?: string; short_name?: string };
-  try { body = await request.json(); }
-  catch { return NextResponse.json({ error: "Body non valido" }, { status: 400 }); }
-
-  if (!body.id)
-    return NextResponse.json({ error: "Il campo 'id' è obbligatorio" }, { status: 400 });
-
-  const updates: Record<string, string | null> = {};
-  if (body.name !== undefined) updates.name = body.name.trim();
-  if (body.short_name !== undefined) updates.short_name = body.short_name.trim() || null;
-
-  if (Object.keys(updates).length === 0)
-    return NextResponse.json({ error: "Nessun campo da aggiornare" }, { status: 400 });
+  const { name, short_name } = await req.json();
+  if (!name?.trim()) {
+    return NextResponse.json({ error: "Nome prodotto obbligatorio" }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from("products")
-    .update(updates)
-    .eq("id", body.id)
-    .select("id, name, short_name, chunk_count")
+    .insert({ name: name.trim(), short_name: short_name?.trim() ?? null, active: true })
+    .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
   return NextResponse.json({ product: data });
+}
+
+// ─── PATCH ───────────────────────────────────────────────────────────────────
+
+export async function PATCH(req: NextRequest) {
+  const supabase = await getSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || user.email !== ADMIN_EMAIL) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const { id, name, short_name, active } = body;
+
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  // Costruisce payload di update dinamicamente
+  const update: Record<string, unknown> = {};
+  if (name !== undefined)       update.name       = name;
+  if (short_name !== undefined) update.short_name = short_name;
+  if (active !== undefined)     update.active     = active;
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "Nessun campo da aggiornare" }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("products").update(update).eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ success: true });
 }

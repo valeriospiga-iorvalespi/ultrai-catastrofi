@@ -70,12 +70,27 @@ export default function ChatShell({ userName }: ChatShellProps) {
       .catch(console.error);
   }, []);
 
-  // ── Rileva se l'utente è admin ────────────────────────────────────────
+  // ── Rileva se l'utente è admin + carica modelli attivi del prodotto ─────
   useEffect(() => {
     fetch("/api/admin/config?productId=probe")
       .then(r => { if (r.status !== 401) setIsAdmin(true); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!selectedProductId) return;
+    fetch(`/api/admin/config?productId=${selectedProductId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setActiveModels({
+            retriever:    { provider: data.retriever_provider    ?? "anthropic", model: data.retriever_model    ?? "claude-sonnet-4-5-20251022" },
+            orchestrator: { provider: data.orchestrator_provider ?? "anthropic", model: data.orchestrator_model ?? "claude-haiku-4-5-20251001" },
+          });
+        }
+      })
+      .catch(() => {});
+  }, [selectedProductId]);
 
   // ── Carica conversazioni dal server ───────────────────────────────────
   const fetchConversations = useCallback(async () => {

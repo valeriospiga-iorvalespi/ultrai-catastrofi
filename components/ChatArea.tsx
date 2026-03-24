@@ -3,11 +3,17 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 
+interface ModelsUsed {
+  retriever:    { provider: string; model: string };
+  orchestrator: { provider: string; model: string };
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   sourceIds?: string[];
+  modelsUsed?: ModelsUsed | null;
   timestamp: Date;
 }
 
@@ -330,12 +336,19 @@ function AssistantBubble({ message, onCopy, onExport, onShowSources, onCitationC
   const [liked, setLiked] = useState<null | "up" | "down">(null);
   const timeStr = message.timestamp.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 
-  // ✅ Calcola mappa chunk_id → numero progressivo basata sul testo
   const citationMap = buildCitationMap(message.content);
-
-  // ✅ Solo i chunk effettivamente citati nel testo (non tutti i sourceIds recuperati)
   const citedIds = extractCitedIds(message.content);
   const hasCitations = citedIds.length > 0;
+
+  // Helper abbreviazione modello
+  const shortModel = (provider: string, model: string) => {
+    const p: Record<string, string> = { anthropic: "🔵", openai: "🟢", mistral: "🟠", google: "🔴" };
+    const icon = p[provider] ?? "⚪";
+    const label = model
+      .replace(/^claude-/, "").replace(/^gpt-/, "GPT-").replace(/^gemini-/, "Gemini ")
+      .replace(/-\d{8,}$/, "").replace(/-latest$/, "").replace(/-preview$/, "");
+    return `${icon} ${label}`;
+  };
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -352,9 +365,28 @@ function AssistantBubble({ message, onCopy, onExport, onShowSources, onCitationC
           <span style={{ fontSize: 12, fontWeight: 600, color: "#003781" }}>UltrAI</span>
         </div>
         {renderContent(message.content, onCitationClick, citationMap)}
+
+        {/* Badge modelli — sempre visibile se disponibili */}
+        {message.modelsUsed && (
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #e8ecf0",
+            display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#b0bec5", textTransform: "uppercase",
+              letterSpacing: "0.05em", marginRight: 2 }}>modelli</span>
+            <span style={{ fontSize: 10.5, fontFamily: "monospace", color: "#5a6a85",
+              background: "#eef2ff", border: "1px solid #dde5ff", borderRadius: 4,
+              padding: "1px 6px" }}>
+              R: {shortModel(message.modelsUsed.retriever.provider, message.modelsUsed.retriever.model)}
+            </span>
+            <span style={{ fontSize: 10, color: "#d1d9e0" }}>·</span>
+            <span style={{ fontSize: 10.5, fontFamily: "monospace", color: "#5a6a85",
+              background: "#f3eeff", border: "1px solid #e2d5ff", borderRadius: 4,
+              padding: "1px 6px" }}>
+              O: {shortModel(message.modelsUsed.orchestrator.provider, message.modelsUsed.orchestrator.model)}
+            </span>
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingLeft: 4, flexWrap: "wrap" }}>
-        {/* ✅ Mostra solo le fonti citate nel testo */}
         {hasCitations && (
           <button onClick={() => onShowSources(citedIds)}
             style={{ background: "#e8f0fb", border: "1px solid #c5d8f5", borderRadius: 4,
@@ -440,15 +472,21 @@ export default function ChatArea({
       .then(data => {
         const msgs: Message[] = (data.messages ?? []).map((m: {
           id: string; role: "user" | "assistant"; content: string;
-          source_ids?: string[]; created_at: string;
+          source_ids?: string[]; models_used?: ModelsUsed | null; created_at: string;
         }) => ({
           id: m.id,
           role: m.role,
           content: m.content,
           sourceIds: m.source_ids ?? [],
+          modelsUsed: m.models_used ?? null,
           timestamp: new Date(m.created_at),
         }));
         setMessages(msgs);
+        // Ripristina activeModels dall'ultimo messaggio assistant con models_used
+        const lastWithModels = [...msgs].reverse().find(m => m.role === "assistant" && m.modelsUsed);
+        if (lastWithModels?.modelsUsed && onModelsUpdate) {
+          onModelsUpdate(lastWithModels.modelsUsed);
+        }
       })
       .catch(console.error)
       .finally(() => setMessagesLoading(false));
@@ -506,6 +544,7 @@ export default function ChatArea({
         id: `temp-${Date.now() + 1}`, role: "assistant",
         content: data.answer || "Mi dispiace, non ho trovato una risposta pertinente.",
         sourceIds: data.sources ?? [],
+        modelsUsed: data.models ?? null,
         timestamp: new Date(),
       }]);
     } catch {

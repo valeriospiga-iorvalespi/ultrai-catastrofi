@@ -151,11 +151,16 @@ export async function POST(req: NextRequest) {
   const uniqueCitedIds = [...new Set(citedIds)];
 
   // ── 7. Persist to DB ──────────────────────────────────────────────────────
+  const modelsUsed = {
+    retriever:    { provider: retrieverProvider,    model: retrieverModel },
+    orchestrator: { provider: orchestratorProvider, model: orchestratorModel },
+  };
+
   if (conversationId) {
     try {
       await supabase.from('messages').insert([
-        { conversation_id: conversationId, role: 'user',      content: question, source_ids: [] },
-        { conversation_id: conversationId, role: 'assistant', content: answer,   source_ids: uniqueCitedIds },
+        { conversation_id: conversationId, role: 'user',      content: question, source_ids: [],          models_used: null },
+        { conversation_id: conversationId, role: 'assistant', content: answer,   source_ids: uniqueCitedIds, models_used: modelsUsed },
       ]);
       await supabase
         .from('conversations')
@@ -190,10 +195,6 @@ export async function POST(req: NextRequest) {
       text:     c.text,
     })),
     cited_ids: uniqueCitedIds,
-    // Esponi provider+model usati (utile per debug/display)
-    models: {
-      retriever:    { provider: retrieverProvider,    model: retrieverModel },
-      orchestrator: { provider: orchestratorProvider, model: orchestratorModel },
-    },
+    models: modelsUsed,
   });
 }

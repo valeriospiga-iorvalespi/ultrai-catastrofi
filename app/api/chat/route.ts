@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { getRetrieverPrompt, getOrchestratorPrompt } from '@/lib/prompts';
+import { RETRIEVER_SYSTEM_PROMPT, buildOrchestratorPrompt } from '@/lib/prompts';
 import { callLLM, LLMProvider } from '@/lib/llm-adapter';
 import { decryptSafe } from '@/lib/crypto';
 
@@ -82,12 +82,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 4. RETRIEVER ─────────────────────────────────────────────────────────
-  const retrieverSystemPrompt = getRetrieverPrompt(product);
   const chunkList = chunks
-    .map((c, i) => `[${i}] chunk_id=${c.chunk_id} | ${c.heading ?? c.article ?? c.section ?? ''}\n${c.note ?? ''}\n${c.text.slice(0, 300)}`)
-    .join('\n\n');
+    .map((c, i) => `<chunk index="${i}" id="${c.chunk_id}"${c.note ? ` note="${c.note}"` : ''}>${c.heading ?? ''}\n${c.text.slice(0, 300)}</chunk>`)
+    .join('\n');
 
-  const retrieverUserPrompt = `DOMANDA: ${question}\n\nCHUNK DISPONIBILI:\n${chunkList}`;
+  const retrieverUserPrompt = `${chunkList}\n\nDOMANDA: ${question}`;
 
   let selectedIndices: number[] = [];
   try {
@@ -95,7 +94,7 @@ export async function POST(req: NextRequest) {
       provider:     retrieverProvider,
       model:        retrieverModel,
       apiKey:       retrieverKey,
-      systemPrompt: retrieverSystemPrompt,
+      systemPrompt: RETRIEVER_SYSTEM_PROMPT,
       userPrompt:   retrieverUserPrompt,
       maxTokens:    300,
     });
@@ -117,13 +116,18 @@ export async function POST(req: NextRequest) {
   const selectedChunks = selectedIndices.slice(0, 5).map((i) => chunks[i]);
 
   // ── 5. ORCHESTRATOR ───────────────────────────────────────────────────────
-  const orchestratorSystemPrompt = getOrchestratorPrompt(product);
-  const chunkContext = selectedChunks
-    .map((c) => `{{${c.chunk_id}}}\n${c.text}`)
-    .join('\n\n---\n\n');
+  const orchestratorSystemPrompt = buildOrchestratorPrompt({
+    persona:    product.persona,
+    domain:     product.domain,
+    guardrails: product.guardrails,
+    language:   product.language,
+  });
 
-  const orchestratorUserPrompt =
-    `DOMANDA: ${question}\n\nFONTI SELEZIONATE:\n${chunkContext}`;
+  const sourceTags = selectedChunks
+    .map((c) => `<source id="${c.chunk_id}" heading="${c.heading ?? ''}">\n${c.text}\n</source>`)
+    .join('\n\n');
+
+  const orchestratorUserPrompt = `${sourceTags}\n\nDOMANDA: ${question}`;
 
   let answer = '';
   try {

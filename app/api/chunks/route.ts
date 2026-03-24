@@ -1,12 +1,10 @@
 /**
  * app/api/chunks/route.ts
- * ─────────────────────────────────────────────────────────────────────────────
  * GET /api/chunks?ids=chunk-id-1,chunk-id-2&productId=uuid
  *
- * Usata da ChatArea per recuperare il testo completo dei chunk da mostrare
- * nel pannello "Fonti" dopo una risposta dell'orchestratore.
- * Richiede che l'utente sia autenticato.
- * ─────────────────────────────────────────────────────────────────────────────
+ * Recupera testo completo dei chunk per il pannello Fonti.
+ * Se non trova chunk con product_id (es. chunk con prefisso errato),
+ * fa un fallback cercando solo per chunk_id su tutti i prodotti.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -29,7 +27,6 @@ function makeClient(request: NextRequest) {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = makeClient(request);
 
-  // Verifica autenticazione
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
@@ -43,18 +40,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Parametri ids e productId obbligatori" }, { status: 400 });
   }
 
-  // Separa e sanifica la lista di chunk_id
   const ids = idsParam
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
-    .slice(0, 10); // max 10 chunk per richiesta
+    .slice(0, 10);
 
   if (ids.length === 0) {
     return NextResponse.json({ chunks: [] });
   }
 
-  const { data, error } = await supabase
+  // ── 1. Cerca con product_id (caso normale) ────────────────────────────────
+  const { data: primary, error } = await supabase
     .from("chunks")
     .select("chunk_id, heading, text, section, article")
     .eq("product_id", productId)
@@ -65,9 +62,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Errore database" }, { status: 500 });
   }
 
-  // Mantieni l'ordine originale degli ids richiesti
+  let results = primary ?? [];
+
+  // ── 2. Fallback: cerca senza product_id per gli id non trovati ────────────
+  const foundIds = new Set(results.map(c => c.chunk_id));
+  const missingIds = ids.filter(id => !foundIds.has(id));
+
+  if (missingIds.length > 0) {
+    const { data: fallback } = await supabase
+      .from("chunks")
+      .select("chunk_id, heading, text, section, article")
+      .in("chunk_id", missingIds);
+    if (fallback?.length) {
+      results = [...results, ...fallback];
+    }
+  }
+
+  // Mantieni l'ordine originale
   const ordered = ids
-    .map((id) => (data ?? []).find((c) => c.chunk_id === id))
+    .map((id) => results.find((c) => c.chunk_id === id))
     .filter(Boolean);
 
   return NextResponse.json({ chunks: ordered });

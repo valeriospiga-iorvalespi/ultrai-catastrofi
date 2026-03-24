@@ -91,6 +91,13 @@ export async function POST(req: NextRequest) {
 
   if (!productId) return NextResponse.json({ error: 'Missing productId' }, { status: 400 });
 
+  // Leggi la config attuale per confrontare i provider
+  const { data: current } = await supabase
+    .from('products')
+    .select('retriever_provider, orchestrator_provider, retriever_api_key_enc, orchestrator_api_key_enc')
+    .eq('id', productId)
+    .single();
+
   // Build update payload
   const update: Record<string, unknown> = {
     persona, domain, guardrails, language,
@@ -99,12 +106,22 @@ export async function POST(req: NextRequest) {
     suggested_questions: Array.isArray(suggested_questions) ? suggested_questions : [],
   };
 
-  // Only update key if a new non-empty value was provided
+  // Gestione key retriever
   if (retriever_api_key && retriever_api_key.trim() !== '') {
+    // Nuova key fornita → cifra e salva
     update.retriever_api_key_enc = encrypt(retriever_api_key.trim());
+  } else if (current && current.retriever_provider !== retriever_provider) {
+    // Provider cambiato senza nuova key → cancella la vecchia key (era per il provider precedente)
+    update.retriever_api_key_enc = null;
   }
+
+  // Gestione key orchestrator
   if (orchestrator_api_key && orchestrator_api_key.trim() !== '') {
+    // Nuova key fornita → cifra e salva
     update.orchestrator_api_key_enc = encrypt(orchestrator_api_key.trim());
+  } else if (current && current.orchestrator_provider !== orchestrator_provider) {
+    // Provider cambiato senza nuova key → cancella la vecchia key
+    update.orchestrator_api_key_enc = null;
   }
 
   const { error } = await supabase

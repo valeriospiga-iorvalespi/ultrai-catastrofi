@@ -148,31 +148,71 @@ export async function callLLM(params: LLMCallParams): Promise<LLMResponse> {
   return { text, provider: params.provider, model: params.model };
 }
 
-// ─── Model lists per provider (usate nell'UI) ─────────────────────────────────
+// ─── Model lists per provider (aggiornati marzo 2026) ────────────────────────
 
 export const PROVIDER_MODELS: Record<LLMProvider, { id: string; label: string }[]> = {
   anthropic: [
-    { id: 'claude-sonnet-4-5-20251022', label: 'Claude Sonnet 4.5' },
-    { id: 'claude-haiku-4-5-20251001',  label: 'Claude Haiku 4.5' },
-    { id: 'claude-opus-4-5-20251101',   label: 'Claude Opus 4.5' },
+    // Claude 4.6 (latest)
+    { id: 'claude-opus-4-6',              label: 'Claude Opus 4.6 ✦' },
+    { id: 'claude-sonnet-4-6',            label: 'Claude Sonnet 4.6' },
+    // Claude 4.5
+    { id: 'claude-opus-4-5-20251101',     label: 'Claude Opus 4.5' },
+    { id: 'claude-sonnet-4-5-20251022',   label: 'Claude Sonnet 4.5' },
+    { id: 'claude-haiku-4-5-20251001',    label: 'Claude Haiku 4.5' },
+    // Claude 4
+    { id: 'claude-opus-4-1',              label: 'Claude Opus 4.1' },
+    { id: 'claude-sonnet-4-20250514',     label: 'Claude Sonnet 4' },
+    // Claude 3.7 / 3.5
+    { id: 'claude-3-7-sonnet-20250219',   label: 'Claude 3.7 Sonnet' },
+    { id: 'claude-3-5-sonnet-20241022',   label: 'Claude 3.5 Sonnet' },
+    { id: 'claude-3-5-haiku-20241022',    label: 'Claude 3.5 Haiku' },
   ],
   openai: [
-    { id: 'gpt-4o',       label: 'GPT-4o' },
-    { id: 'gpt-4o-mini',  label: 'GPT-4o Mini' },
-    { id: 'gpt-4-turbo',  label: 'GPT-4 Turbo' },
-    { id: 'o1-mini',      label: 'o1 Mini' },
+    // GPT-5 family (2026)
+    { id: 'gpt-5.4',        label: 'GPT-5.4 ✦' },
+    { id: 'gpt-5.4-mini',   label: 'GPT-5.4 Mini' },
+    { id: 'gpt-5.4-nano',   label: 'GPT-5.4 Nano' },
+    { id: 'gpt-5.2',        label: 'GPT-5.2' },
+    // GPT-4.1 family
+    { id: 'gpt-4.1',        label: 'GPT-4.1' },
+    { id: 'gpt-4.1-mini',   label: 'GPT-4.1 Mini' },
+    { id: 'gpt-4.1-nano',   label: 'GPT-4.1 Nano' },
+    // GPT-4o family
+    { id: 'gpt-4o',         label: 'GPT-4o' },
+    { id: 'gpt-4o-mini',    label: 'GPT-4o Mini' },
+    // Reasoning
+    { id: 'o1',             label: 'o1' },
+    { id: 'o3',             label: 'o3' },
+    { id: 'o3-mini',        label: 'o3 Mini' },
+    { id: 'o4-mini',        label: 'o4 Mini' },
   ],
   mistral: [
-    { id: 'mistral-large-latest',  label: 'Mistral Large' },
-    { id: 'mistral-small-latest',  label: 'Mistral Small' },
-    { id: 'open-mixtral-8x22b',    label: 'Mixtral 8×22B' },
-    { id: 'codestral-latest',      label: 'Codestral' },
+    // Frontier / reasoning
+    { id: 'mistral-large-latest',       label: 'Mistral Large 3 ✦' },
+    { id: 'magistral-medium-latest',    label: 'Magistral Medium' },
+    { id: 'magistral-small-latest',     label: 'Magistral Small' },
+    // General purpose
+    { id: 'mistral-medium-latest',      label: 'Mistral Medium 3' },
+    { id: 'mistral-small-latest',       label: 'Mistral Small 3.1' },
+    { id: 'ministral-8b-latest',        label: 'Ministral 8B' },
+    { id: 'ministral-3b-latest',        label: 'Ministral 3B' },
+    // Code
+    { id: 'codestral-latest',           label: 'Codestral 2' },
+    { id: 'devstral-small-latest',      label: 'Devstral Small' },
   ],
   google: [
-    { id: 'gemini-2.0-flash',        label: 'Gemini 2.0 Flash' },
-    { id: 'gemini-2.0-flash-lite',   label: 'Gemini 2.0 Flash Lite' },
-    { id: 'gemini-1.5-pro',          label: 'Gemini 1.5 Pro' },
-    { id: 'gemini-1.5-flash',        label: 'Gemini 1.5 Flash' },
+    // Gemini 3.1 (latest, feb-mar 2026)
+    { id: 'gemini-3.1-pro-preview',      label: 'Gemini 3.1 Pro ✦' },
+    { id: 'gemini-3.1-flash-preview',    label: 'Gemini 3.1 Flash' },
+    { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite' },
+    // Gemini 3.0
+    { id: 'gemini-3-flash-preview',      label: 'Gemini 3 Flash' },
+    // Gemini 2.5
+    { id: 'gemini-2.5-pro',              label: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.5-flash',            label: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.5-flash-lite',       label: 'Gemini 2.5 Flash Lite' },
+    // Gemini 2.0 (deprecazione giugno 2026)
+    { id: 'gemini-2.0-flash',            label: 'Gemini 2.0 Flash (dep. giu 2026)' },
   ],
 };
 

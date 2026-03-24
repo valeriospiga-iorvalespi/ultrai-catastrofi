@@ -37,18 +37,19 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, short_name, chunk_count, last_upload_at, active")
+    .select("id, name, short_name, chunk_count, last_upload_at, active, source_documents")
     .order("name");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const products = (data ?? []).map((p) => ({
-    id:           p.id,
-    name:         p.name,
-    short_name:   p.short_name ?? "",
-    chunk_count:  p.chunk_count ?? 0,
-    last_updated: p.last_upload_at ?? "-",
-    active:       p.active ?? true,
+    id:               p.id,
+    name:             p.name,
+    short_name:       p.short_name ?? "",
+    chunk_count:      p.chunk_count ?? 0,
+    last_updated:     p.last_upload_at ?? "-",
+    active:           p.active ?? true,
+    source_documents: Array.isArray(p.source_documents) ? p.source_documents : [],
   }));
 
   return NextResponse.json({ products });
@@ -88,15 +89,16 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { id, name, short_name, active } = body;
+  const { id, name, short_name, active, source_documents } = body;
 
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   // Costruisce payload di update dinamicamente
   const update: Record<string, unknown> = {};
-  if (name !== undefined)       update.name       = name;
-  if (short_name !== undefined) update.short_name = short_name;
-  if (active !== undefined)     update.active     = active;
+  if (name !== undefined)             update.name             = name;
+  if (short_name !== undefined)       update.short_name       = short_name;
+  if (active !== undefined)           update.active           = active;
+  if (source_documents !== undefined) update.source_documents = source_documents;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nessun campo da aggiornare" }, { status: 400 });

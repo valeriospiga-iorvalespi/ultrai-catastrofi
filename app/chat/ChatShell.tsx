@@ -29,6 +29,7 @@ interface Product {
   chunk_count: number;
   last_file_name?: string | null;
   suggested_questions?: string[];
+  source_documents?: string[];
 }
 
 export default function ChatShell({ userName }: ChatShellProps) {
@@ -480,6 +481,7 @@ export default function ChatShell({ userName }: ChatShellProps) {
           productChunkCount={selectedProduct?.chunk_count ?? 0}
           productLastFileName={selectedProduct?.last_file_name ?? null}
           productSuggestedQuestions={selectedProduct?.suggested_questions ?? []}
+          productSourceDocuments={selectedProduct?.source_documents ?? []}
           activeModels={activeModels}
           isAdmin={isAdmin}
           onModelsUpdate={setActiveModels}

@@ -26,7 +26,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, short_name, chunk_count, last_file_name, suggested_questions")
+    .select("id, name, short_name, chunk_count, last_file_name, suggested_questions, source_documents")
     .eq("active", true)
     .order("name");
 

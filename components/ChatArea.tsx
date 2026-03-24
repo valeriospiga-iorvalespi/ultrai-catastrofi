@@ -39,6 +39,7 @@ interface ChatAreaProps {
   productChunkCount?: number;
   productLastFileName?: string | null;
   productSuggestedQuestions?: string[];
+  productSourceDocuments?: string[];
   activeModels?: ModelsInfo | null;
   isAdmin?: boolean;
   onModelsUpdate?: (models: ModelsInfo) => void;
@@ -49,13 +50,13 @@ interface ChatAreaProps {
 interface WelcomeBoxProps {
   productName: string;
   chunkCount: number;
-  lastFileName?: string | null;
+  sourceDocuments?: string[];
   suggestedQuestions?: string[];
   isMobile: boolean;
   onSelectQuestion: (q: string) => void;
 }
 
-function WelcomeBox({ productName, chunkCount, lastFileName, suggestedQuestions = [], isMobile, onSelectQuestion }: WelcomeBoxProps) {
+function WelcomeBox({ productName, chunkCount, sourceDocuments = [], suggestedQuestions = [], isMobile, onSelectQuestion }: WelcomeBoxProps) {
   return (
     <div style={{ background: "#e8f0fb", borderRadius: 10,
       padding: isMobile ? "14px 16px" : "18px 22px", marginBottom: 24, maxWidth: 720 }}>
@@ -81,20 +82,18 @@ function WelcomeBox({ productName, chunkCount, lastFileName, suggestedQuestions 
         Posso aiutarti a rispondere a domande sulla polizza{" "}
         <strong>{productName}</strong> di Allianz: garanzie, massimali, franchigie,
         procedure di sinistro ed esclusioni. Le risposte si basano esclusivamente
-        sulla documentazione di prodotto ufficiale{lastFileName ? ":" : "."}
+        sulla documentazione di prodotto ufficiale{sourceDocuments.length > 0 ? ":" : "."}
       </p>
 
       {/* Elenco documenti caricati */}
-      {lastFileName && (
-        <div style={{ marginBottom: 12 }}>
-          <ul style={{ margin: "4px 0 0 0", padding: "0 0 0 18px" }}>
-            {lastFileName.split(";").map((f, i) => (
-              <li key={i} style={{ fontSize: 12.5, color: "#2c3e50", lineHeight: 1.6 }}>
-                {f.replace(/^\d+_/, "").replace(/\.(docx|md|pdf)$/i, "").replace(/_/g, " ")}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {sourceDocuments.length > 0 && (
+        <ul style={{ margin: "0 0 12px 0", padding: "0 0 0 18px" }}>
+          {sourceDocuments.map((f, i) => (
+            <li key={i} style={{ fontSize: 12.5, color: "#2c3e50", lineHeight: 1.7 }}>
+              {f.replace(/^\d{8,}_/, "").replace(/\.(docx|md|pdf)$/i, "").replace(/_/g, " ")}
+            </li>
+          ))}
+        </ul>
       )}
 
       {/* Avviso */}
@@ -443,7 +442,7 @@ function UserBubble({ message, isMobile }: { message: Message; isMobile?: boolea
 export default function ChatArea({
   productId, conversationId, onConversationUpdate, onNewConversation,
   isMobile = false, productName = "Prodotto", productChunkCount = 0,
-  productLastFileName = null, productSuggestedQuestions = [],
+  productLastFileName = null, productSuggestedQuestions = [], productSourceDocuments = [],
   activeModels = null, isAdmin = false, onModelsUpdate,
 }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -656,7 +655,7 @@ export default function ChatArea({
               <WelcomeBox
                 productName={productName}
                 chunkCount={productChunkCount}
-                lastFileName={productLastFileName}
+                sourceDocuments={productSourceDocuments}
                 suggestedQuestions={productSuggestedQuestions}
                 isMobile={isMobile}
                 onSelectQuestion={setInputText}

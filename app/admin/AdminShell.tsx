@@ -13,6 +13,7 @@ interface Chunk {
 interface Product {
   id: string; name: string; short_name: string;
   chunk_count: number; last_updated: string; active: boolean;
+  source_documents?: string[];
 }
 
 type Tab = "upload" | "chunks" | "products" | "config";
@@ -275,6 +276,24 @@ export default function AdminShell() {
       body: JSON.stringify({ id, name, short_name: shortName }) });
     if (!res.ok) throw new Error("Rinomina fallita");
     setProducts((prev) => prev.map((p) => p.id === id ? { ...p, name, short_name: shortName } : p));
+  };
+
+  const handleRemoveDocument = async (productId: string, fileName: string) => {
+    if (!confirm(`Rimuovere "${fileName}" dalla lista documenti? I chunk caricati da questo file NON vengono eliminati.`)) return;
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const updated = (product.source_documents ?? []).filter(f => f !== fileName);
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: productId, source_documents: updated }),
+      });
+      if (!res.ok) throw new Error();
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, source_documents: updated } : p));
+    } catch {
+      alert("Operazione fallita. Riprova.");
+    }
   };
 
   const handleToggleProductActive = async (id: string, currentActive: boolean) => {
@@ -583,6 +602,39 @@ export default function AdminShell() {
                       <div style={{ fontSize: 11, color: "#9aa5b4" }}>upload</div>
                     </div>
                   </div>
+
+                  {/* Documenti caricati */}
+                  {(product.source_documents ?? []).length > 0 && (
+                    <div style={{ marginBottom: 12, background: "#f8fafd", borderRadius: 8,
+                      padding: "8px 10px", border: "1px solid #e8f0fb" }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: "#9aa5b4",
+                        textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                        📄 Documenti
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {(product.source_documents ?? []).map(f => (
+                          <div key={f} style={{ display: "flex", alignItems: "center",
+                            justifyContent: "space-between", gap: 6 }}>
+                            <span style={{ fontSize: 11.5, color: "#2c3e50", overflow: "hidden",
+                              textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+                              title={f}>
+                              {f.replace(/^\d{8,}_/, "").replace(/\.(docx|md|pdf)$/i, "")}
+                            </span>
+                            <button
+                              onClick={() => handleRemoveDocument(product.id, f)}
+                              title="Rimuovi dalla lista"
+                              style={{ background: "none", border: "none", color: "#c0392b",
+                                cursor: "pointer", fontSize: 12, padding: "1px 4px",
+                                flexShrink: 0, opacity: 0.6, lineHeight: 1 }}
+                              onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                              onMouseLeave={e => (e.currentTarget.style.opacity = "0.6")}>
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 8 }}>
                     <RenameProductInline product={product} onRename={handleRenameProduct} />
                     {product.active ? (

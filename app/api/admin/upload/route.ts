@@ -180,18 +180,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── 10. Aggiorna products ──────────────────────────────────────────────────
   if (mode === "replace") {
     await supabase.from("products").update({
-      last_upload_at: new Date().toISOString(),
-      last_file_name: fileName,
-      chunk_count:    chunks.length,
+      last_upload_at:   new Date().toISOString(),
+      last_file_name:   fileName,
+      chunk_count:      chunks.length,
+      source_documents: JSON.stringify([fileName]),
     }).eq("id", productIdStr);
   } else {
+    // Append: legge source_documents esistenti e aggiunge il nuovo file se non già presente
     const { data: prod } = await supabase
-      .from("products").select("chunk_count").eq("id", productIdStr).single();
+      .from("products")
+      .select("chunk_count, source_documents")
+      .eq("id", productIdStr)
+      .single();
     const newCount = (prod?.chunk_count ?? 0) + inserted;
+    const existing: string[] = Array.isArray(prod?.source_documents) ? prod.source_documents : [];
+    const updatedDocs = existing.includes(fileName) ? existing : [...existing, fileName];
     await supabase.from("products").update({
-      last_upload_at: new Date().toISOString(),
-      last_file_name: fileName,
-      chunk_count:    newCount,
+      last_upload_at:   new Date().toISOString(),
+      last_file_name:   fileName,
+      chunk_count:      newCount,
+      source_documents: JSON.stringify(updatedDocs),
     }).eq("id", productIdStr);
   }
 

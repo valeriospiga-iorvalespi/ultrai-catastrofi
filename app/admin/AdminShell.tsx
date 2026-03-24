@@ -221,6 +221,9 @@ export default function AdminShell() {
       setCopyFromId("");
     }
   };
+
+  useEffect(() => { fetchProducts(); }, []);
+  useEffect(() => {
     if (tab === "chunks") fetchChunks(filterProduct);
     if (tab === "products") fetchProducts();
     if (tab === "config" && configProductId) fetchConfig(configProductId);

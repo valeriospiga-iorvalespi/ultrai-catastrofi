@@ -75,8 +75,8 @@ export default function ChatShell({ userName }: ChatShellProps) {
 
   // ── Rileva se l'utente è admin + carica modelli attivi del prodotto ─────
   useEffect(() => {
-    fetch("/api/admin/config?productId=probe")
-      .then(r => { if (r.status !== 401) setIsAdmin(true); })
+    fetch("/api/admin/products")
+      .then(r => { if (r.ok) setIsAdmin(true); })
       .catch(() => {});
   }, []);
 

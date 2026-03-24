@@ -442,9 +442,14 @@ function UserBubble({ message, isMobile }: { message: Message; isMobile?: boolea
 export default function ChatArea({
   productId, conversationId, onConversationUpdate, onNewConversation,
   isMobile = false, productName = "Prodotto", productChunkCount = 0,
-  productLastFileName = null, productSuggestedQuestions = [], productSourceDocuments = [],
+  productLastFileName = null,
+  productSuggestedQuestions = [],
+  productSourceDocuments = [],
   activeModels = null, isAdmin = false, onModelsUpdate,
 }: ChatAreaProps) {
+  // Difesa da null — Supabase può restituire null per colonne jsonb non ancora popolate
+  const safeSourceDocuments    = Array.isArray(productSourceDocuments)    ? productSourceDocuments    : [];
+  const safeSuggestedQuestions = Array.isArray(productSuggestedQuestions) ? productSuggestedQuestions : [];
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -655,8 +660,8 @@ export default function ChatArea({
               <WelcomeBox
                 productName={productName}
                 chunkCount={productChunkCount}
-                sourceDocuments={productSourceDocuments}
-                suggestedQuestions={productSuggestedQuestions}
+                sourceDocuments={safeSourceDocuments}
+                suggestedQuestions={safeSuggestedQuestions}
                 isMobile={isMobile}
                 onSelectQuestion={setInputText}
               />

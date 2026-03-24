@@ -32,5 +32,11 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ products: data ?? [] });
+  const products = (data ?? []).map(p => ({
+    ...p,
+    suggested_questions: Array.isArray(p.suggested_questions) ? p.suggested_questions : [],
+    source_documents:    Array.isArray(p.source_documents)    ? p.source_documents    : [],
+  }));
+
+  return NextResponse.json({ products });
 }

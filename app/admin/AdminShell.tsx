@@ -141,6 +141,11 @@ export default function AdminShell() {
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [productMsg, setProductMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [config, setConfig] = useState({ persona: "", domain: "", guardrails: "", language: "" });
+  const [llmConfig, setLlmConfig] = useState({
+    retriever_provider: "anthropic", retriever_model: "claude-sonnet-4-5-20251022", retriever_api_key: "",
+    orchestrator_provider: "anthropic", orchestrator_model: "claude-haiku-4-5-20251001", orchestrator_api_key: "",
+    retriever_key_saved: false, orchestrator_key_saved: false,
+  });
   const [configProductId, setConfigProductId] = useState("");
   const [configLoading, setConfigLoading] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
@@ -177,6 +182,16 @@ export default function AdminShell() {
       if (res.ok) {
         const data = await res.json();
         setConfig({ persona: data.persona ?? "", domain: data.domain ?? "", guardrails: data.guardrails ?? "", language: data.language ?? "" });
+        setLlmConfig({
+          retriever_provider:    data.retriever_provider    ?? "anthropic",
+          retriever_model:       data.retriever_model       ?? "claude-sonnet-4-5-20251022",
+          retriever_api_key:     "",
+          orchestrator_provider: data.orchestrator_provider ?? "anthropic",
+          orchestrator_model:    data.orchestrator_model    ?? "claude-haiku-4-5-20251001",
+          orchestrator_api_key:  "",
+          retriever_key_saved:    data.retriever_key_saved    ?? false,
+          orchestrator_key_saved: data.orchestrator_key_saved ?? false,
+        });
       }
     } catch (e) { console.error(e); }
     finally { setConfigLoading(false); }
@@ -527,33 +542,170 @@ export default function AdminShell() {
 
         {/* ── CONFIG ── */}
         {tab === "config" && (
-          <div style={{ maxWidth: 680 }}>
-            <div style={{ marginBottom: 20 }}>
+          <div style={{ maxWidth: 720 }}>
+            {/* Selettore prodotto */}
+            <div style={{ marginBottom: 24 }}>
               <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Prodotto</label>
               <select value={configProductId} onChange={(e) => setConfigProductId(e.target.value)}
                 style={{ width: "100%", border: "1.5px solid #d1d9e0", borderRadius: 8,
-                  padding: "10px 12px", fontSize: 14, color: "#2c3e50", outline: "none", background: "#fff", marginBottom: 20 }}>
+                  padding: "10px 12px", fontSize: 14, color: "#2c3e50", outline: "none", background: "#fff" }}>
                 {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
+
             {configLoading ? <div style={{ color: "#888", fontSize: 13 }}>Caricamento...</div> : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {[
-                  { key: "persona" as const, label: "Persona", hint: "Ruolo e tono.", rows: 4 },
-                  { key: "domain" as const, label: "Dominio", hint: "Prodotto e caratteristiche.", rows: 5 },
-                  { key: "guardrails" as const, label: "Guardrail aggiuntivi", hint: "Regole extra.", rows: 4 },
-                  { key: "language" as const, label: "Lingua e stile", hint: "Registro e formato.", rows: 3 },
-                ].map((field) => (
-                  <div key={field.key}>
-                    <label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "#2c3e50", marginBottom: 4 }}>{field.label}</label>
-                    <p style={{ fontSize: 12, color: "#9aa5b4", marginBottom: 6 }}>{field.hint}</p>
-                    <textarea value={config[field.key]} onChange={(e) => setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                      rows={field.rows}
-                      style={{ width: "100%", boxSizing: "border-box", border: "1px solid #dde3ec",
-                        borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit",
-                        color: "#2c3e50", lineHeight: 1.6, resize: "vertical", outline: "none" }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+                {/* ── Sezione LLM ── */}
+                <div style={{ border: "1px solid #e8ecf0", borderRadius: 10, padding: "16px 18px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#003781", marginBottom: 14 }}>🤖 Modelli LLM</div>
+
+                  {/* Riepilogo attivo */}
+                  {(llmConfig.retriever_provider || llmConfig.orchestrator_provider) && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+                      <span style={{ fontSize: 10.5, color: "#9aa5b4" }}>Attivi:</span>
+                      <span style={{ background: "#e8f0fb", color: "#003781", borderRadius: 4,
+                        padding: "2px 8px", fontSize: 10.5, fontFamily: "monospace", fontWeight: 600 }}>
+                        R: {llmConfig.retriever_provider} · {llmConfig.retriever_model.replace(/-\d{8,}$/, "").replace(/-latest$/, "")}
+                      </span>
+                      <span style={{ background: "#f0e8fb", color: "#6b21a8", borderRadius: 4,
+                        padding: "2px 8px", fontSize: 10.5, fontFamily: "monospace", fontWeight: 600 }}>
+                        O: {llmConfig.orchestrator_provider} · {llmConfig.orchestrator_model.replace(/-\d{8,}$/, "").replace(/-latest$/, "")}
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                    {/* Retriever */}
+                    {[
+                      { role: "retriever" as const,    label: "Retriever",    color: "#003781", bg: "#e8f0fb" },
+                      { role: "orchestrator" as const, label: "Orchestrator", color: "#6b21a8", bg: "#f0e8fb" },
+                    ].map(({ role, label, color, bg }) => {
+                      const providerKey = `${role}_provider` as const;
+                      const modelKey    = `${role}_model` as const;
+                      const keyKey      = `${role}_api_key` as const;
+                      const savedKey    = `${role}_key_saved` as const;
+
+                      const MODELS: Record<string, { id: string; label: string }[]> = {
+                        anthropic: [
+                          { id: "claude-sonnet-4-5-20251022", label: "Claude Sonnet 4.5" },
+                          { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5" },
+                          { id: "claude-opus-4-5-20251101",   label: "Claude Opus 4.5" },
+                        ],
+                        openai: [
+                          { id: "gpt-4o",      label: "GPT-4o" },
+                          { id: "gpt-4o-mini", label: "GPT-4o Mini" },
+                          { id: "gpt-4-turbo", label: "GPT-4 Turbo" },
+                          { id: "o1-mini",     label: "o1 Mini" },
+                        ],
+                        mistral: [
+                          { id: "mistral-large-latest", label: "Mistral Large" },
+                          { id: "mistral-small-latest", label: "Mistral Small" },
+                          { id: "open-mixtral-8x22b",   label: "Mixtral 8×22B" },
+                          { id: "codestral-latest",     label: "Codestral" },
+                        ],
+                        google: [
+                          { id: "gemini-2.0-flash",      label: "Gemini 2.0 Flash" },
+                          { id: "gemini-2.0-flash-lite",  label: "Gemini 2.0 Flash Lite" },
+                          { id: "gemini-1.5-pro",         label: "Gemini 1.5 Pro" },
+                          { id: "gemini-1.5-flash",       label: "Gemini 1.5 Flash" },
+                        ],
+                      };
+                      const currentProvider = llmConfig[providerKey];
+                      const modelList = MODELS[currentProvider] ?? [];
+
+                      return (
+                        <div key={role} style={{ border: `1px solid ${bg}`, borderRadius: 8, padding: "12px 14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                            <span style={{ background: bg, color, borderRadius: 4,
+                              padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{label}</span>
+                            {llmConfig[savedKey] && (
+                              <span style={{ fontSize: 10.5, background: "#f0fff4", color: "#1a7a3a",
+                                border: "1px solid #9fe0b0", borderRadius: 10, padding: "1px 7px" }}>
+                                🔑 Key salvata
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Provider */}
+                          <div style={{ marginBottom: 8 }}>
+                            <label style={{ fontSize: 11, color: "#9aa5b4", display: "block", marginBottom: 3 }}>Provider</label>
+                            <select value={currentProvider}
+                              onChange={(e) => {
+                                const p = e.target.value;
+                                const firstModel = MODELS[p]?.[0]?.id ?? "";
+                                setLlmConfig(prev => ({ ...prev, [providerKey]: p, [modelKey]: firstModel }));
+                              }}
+                              style={{ width: "100%", border: "1px solid #d1d9e0", borderRadius: 6,
+                                padding: "7px 10px", fontSize: 13, color: "#2c3e50", outline: "none", background: "#fff" }}>
+                              {["anthropic", "openai", "mistral", "google"].map(p => (
+                                <option key={p} value={p}>
+                                  {{ anthropic: "Anthropic", openai: "OpenAI", mistral: "Mistral", google: "Google" }[p]}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Modello */}
+                          <div style={{ marginBottom: 8 }}>
+                            <label style={{ fontSize: 11, color: "#9aa5b4", display: "block", marginBottom: 3 }}>Modello</label>
+                            <select value={llmConfig[modelKey]}
+                              onChange={(e) => setLlmConfig(prev => ({ ...prev, [modelKey]: e.target.value }))}
+                              style={{ width: "100%", border: "1px solid #d1d9e0", borderRadius: 6,
+                                padding: "7px 10px", fontSize: 13, color: "#2c3e50", outline: "none", background: "#fff" }}>
+                              {modelList.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                            </select>
+                          </div>
+
+                          {/* API Key */}
+                          <div>
+                            <label style={{ fontSize: 11, color: "#9aa5b4", display: "block", marginBottom: 3 }}>
+                              API Key {llmConfig[savedKey] ? "(lascia vuoto per non sovrascrivere)" : "(richiesta)"}
+                            </label>
+                            <input type="password"
+                              placeholder={llmConfig[savedKey] ? "••••••••••••••••" : `Inserisci API key`}
+                              value={llmConfig[keyKey]}
+                              onChange={(e) => setLlmConfig(prev => ({ ...prev, [keyKey]: e.target.value }))}
+                              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #d1d9e0",
+                                borderRadius: 6, padding: "7px 10px", fontSize: 13, fontFamily: "monospace",
+                                color: "#2c3e50", outline: "none" }} />
+                            {currentProvider === "anthropic" && !llmConfig[savedKey] && (
+                              <div style={{ fontSize: 10.5, color: "#b0bec5", marginTop: 3 }}>
+                                Se vuoto, usa ANTHROPIC_API_KEY da env Vercel.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                </div>
+
+                {/* ── Sezione Personalità ── */}
+                <div style={{ border: "1px solid #e8ecf0", borderRadius: 10, padding: "16px 18px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#003781", marginBottom: 14 }}>🎭 Personalità e dominio</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {[
+                      { key: "persona" as const,    label: "Persona",            hint: "Ruolo e tono.",                   rows: 4 },
+                      { key: "domain" as const,     label: "Dominio",            hint: "Prodotto e caratteristiche.",     rows: 5 },
+                      { key: "guardrails" as const, label: "Guardrail aggiuntivi", hint: "Regole extra.",                 rows: 4 },
+                      { key: "language" as const,   label: "Lingua e stile",     hint: "Registro e formato.",             rows: 3 },
+                    ].map((field) => (
+                      <div key={field.key}>
+                        <label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "#2c3e50", marginBottom: 4 }}>{field.label}</label>
+                        <p style={{ fontSize: 12, color: "#9aa5b4", marginBottom: 6 }}>{field.hint}</p>
+                        <textarea value={config[field.key]}
+                          onChange={(e) => setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                          rows={field.rows}
+                          style={{ width: "100%", boxSizing: "border-box", border: "1px solid #dde3ec",
+                            borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit",
+                            color: "#2c3e50", lineHeight: 1.6, resize: "vertical", outline: "none" }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Feedback e salvataggio ── */}
                 {configMsg && (
                   <div style={{ padding: "10px 14px", borderRadius: 6, fontSize: 13,
                     background: configMsg.ok ? "#f0fff4" : "#fff0f0",
@@ -565,18 +717,36 @@ export default function AdminShell() {
                 <button onClick={async () => {
                   setConfigSaving(true); setConfigMsg(null);
                   try {
-                    const res = await fetch("/api/admin/config", { method: "POST",
+                    const res = await fetch("/api/admin/config", {
+                      method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ productId: configProductId, ...config }) });
+                      body: JSON.stringify({
+                        productId: configProductId,
+                        ...config,
+                        retriever_provider:    llmConfig.retriever_provider,
+                        retriever_model:       llmConfig.retriever_model,
+                        retriever_api_key:     llmConfig.retriever_api_key,
+                        orchestrator_provider: llmConfig.orchestrator_provider,
+                        orchestrator_model:    llmConfig.orchestrator_model,
+                        orchestrator_api_key:  llmConfig.orchestrator_api_key,
+                      }),
+                    });
                     const data = await res.json();
-                    setConfigMsg(res.ok ? { ok: true, text: "Salvato." } : { ok: false, text: data.error ?? "Errore." });
+                    if (res.ok) {
+                      setConfigMsg({ ok: true, text: "Salvato." });
+                      // Reset key fields e ricarica per aggiornare key_saved
+                      setLlmConfig(prev => ({ ...prev, retriever_api_key: "", orchestrator_api_key: "" }));
+                      await fetchConfig(configProductId);
+                    } else {
+                      setConfigMsg({ ok: false, text: data.error ?? "Errore." });
+                    }
                   } catch { setConfigMsg({ ok: false, text: "Errore di rete." }); }
                   finally { setConfigSaving(false); }
                 }} disabled={configSaving}
                   style={{ background: configSaving ? "#c8d4e8" : "#003781", color: "#fff", border: "none",
                     borderRadius: 8, padding: isMobile ? "12px 24px" : "10px 24px", fontSize: 14, fontWeight: 600,
                     cursor: configSaving ? "not-allowed" : "pointer", alignSelf: "flex-start" }}>
-                  {configSaving ? "Salvataggio..." : "💾 Salva"}
+                  {configSaving ? "Salvataggio..." : "💾 Salva configurazione"}
                 </button>
               </div>
             )}

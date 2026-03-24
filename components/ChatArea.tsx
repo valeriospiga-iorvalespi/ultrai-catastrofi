@@ -18,14 +18,22 @@ interface ChunkDetail {
   section?: string;
 }
 
+interface ModelsInfo {
+  retriever:    { provider: string; model: string };
+  orchestrator: { provider: string; model: string };
+}
+
 interface ChatAreaProps {
   productId: string;
   conversationId?: string;
   onConversationUpdate?: (id: string, title: string) => void;
   onNewConversation?: () => void;
   isMobile?: boolean;
-  productName?: string;       // ✅ NUOVO: nome prodotto dinamico
-  productChunkCount?: number; // ✅ NUOVO: numero chunk per WelcomeBox
+  productName?: string;
+  productChunkCount?: number;
+  activeModels?: ModelsInfo | null;
+  isAdmin?: boolean;
+  onModelsUpdate?: (models: ModelsInfo) => void;
 }
 
 // ─── WelcomeBox dinamico ────────────────────────────────────────────────────
@@ -385,6 +393,7 @@ function UserBubble({ message, isMobile }: { message: Message; isMobile?: boolea
 export default function ChatArea({
   productId, conversationId, onConversationUpdate, onNewConversation,
   isMobile = false, productName = "Prodotto", productChunkCount = 0,
+  activeModels = null, isAdmin = false, onModelsUpdate,
 }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
@@ -482,6 +491,8 @@ export default function ChatArea({
         }),
       });
       const data = await res.json();
+      // Aggiorna badge modelli attivi
+      if (data.models && onModelsUpdate) onModelsUpdate(data.models);
       setMessages(prev => [...prev, {
         id: `temp-${Date.now() + 1}`, role: "assistant",
         content: data.answer || "Mi dispiace, non ho trovato una risposta pertinente.",
@@ -516,9 +527,46 @@ export default function ChatArea({
 
   const hasText = inputText.trim().length > 0;
 
+  // ── Helper badge modelli (inline, solo admin) ─────────────────────────
+  const PROVIDER_SHORT: Record<string, string> = {
+    anthropic: "Anthropic", openai: "OpenAI", mistral: "Mistral", google: "Google",
+  };
+  function modelShortLabel(provider: string, modelId: string): string {
+    return modelId
+      .replace(/^claude-/, "").replace(/^gpt-/, "GPT-").replace(/^gemini-/, "Gemini ")
+      .replace(/-\d{8,}$/, "").replace(/-latest$/, "");
+  }
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
       background: "#fff", minWidth: 0 }}>
+
+      {/* Badge modelli — header admin */}
+      {isAdmin && activeModels && (
+        <div style={{ borderBottom: "1px solid #f0f4fb", padding: "5px 16px",
+          background: "#fafbfe", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, color: "#9aa5b4", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            🤖 Modelli attivi
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4,
+            background: "#e8f0fb", color: "#003781", borderRadius: 4,
+            padding: "2px 7px", fontSize: 10.5, fontFamily: "monospace" }}>
+            <span style={{ fontWeight: 700 }}>R</span>
+            {PROVIDER_SHORT[activeModels.retriever.provider] ?? activeModels.retriever.provider}
+            {" · "}
+            {modelShortLabel(activeModels.retriever.provider, activeModels.retriever.model)}
+          </span>
+          <span style={{ fontSize: 10, color: "#c8d4e8" }}>·</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4,
+            background: "#f0e8fb", color: "#6b21a8", borderRadius: 4,
+            padding: "2px 7px", fontSize: 10.5, fontFamily: "monospace" }}>
+            <span style={{ fontWeight: 700 }}>O</span>
+            {PROVIDER_SHORT[activeModels.orchestrator.provider] ?? activeModels.orchestrator.provider}
+            {" · "}
+            {modelShortLabel(activeModels.orchestrator.provider, activeModels.orchestrator.model)}
+          </span>
+        </div>
+      )}
 
       {/* Pannello fonti */}
       {sourcesPanel !== null && (
@@ -615,6 +663,25 @@ export default function ChatArea({
             + {isMobile ? "Nuova" : "Nuova chat"}
           </button>
         </div>
+
+        {/* Badge modelli — footer admin */}
+        {isAdmin && activeModels && (
+          <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #f0f4fb",
+            display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, color: "#c8d4e8" }}>🤖</span>
+            <span style={{ fontSize: 10, color: "#b0bec5", fontFamily: "monospace" }}>
+              <strong>R:</strong>{" "}
+              {PROVIDER_SHORT[activeModels.retriever.provider] ?? activeModels.retriever.provider}
+              {" · "}{modelShortLabel(activeModels.retriever.provider, activeModels.retriever.model)}
+            </span>
+            <span style={{ fontSize: 10, color: "#e0e0e0" }}>·</span>
+            <span style={{ fontSize: 10, color: "#b0bec5", fontFamily: "monospace" }}>
+              <strong>O:</strong>{" "}
+              {PROVIDER_SHORT[activeModels.orchestrator.provider] ?? activeModels.orchestrator.provider}
+              {" · "}{modelShortLabel(activeModels.orchestrator.provider, activeModels.orchestrator.model)}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

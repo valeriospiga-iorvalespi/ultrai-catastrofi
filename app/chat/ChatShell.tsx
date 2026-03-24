@@ -1,10 +1,15 @@
-// app/chat/ChatShell.tsx — v3: storico server-side + selezione prodotto
+// app/chat/ChatShell.tsx — v4: multi-LLM badge
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
 import ChatArea from "@/components/ChatArea";
+
+interface ModelsInfo {
+  retriever:    { provider: string; model: string };
+  orchestrator: { provider: string; model: string };
+}
 
 interface ChatShellProps {
   userName: string;
@@ -49,6 +54,10 @@ export default function ChatShell({ userName }: ChatShellProps) {
   const [hoveredConvId, setHoveredConvId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
+  // Multi-LLM badge
+  const [activeModels, setActiveModels] = useState<ModelsInfo | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
   // ── Carica prodotti ────────────────────────────────────────────────────
   useEffect(() => {
     fetch("/api/products")
@@ -59,6 +68,13 @@ export default function ChatShell({ userName }: ChatShellProps) {
         if (prods.length > 0) setSelectedProductId(prods[0].id);
       })
       .catch(console.error);
+  }, []);
+
+  // ── Rileva se l'utente è admin ────────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/admin/config?productId=probe")
+      .then(r => { if (r.status !== 401) setIsAdmin(true); })
+      .catch(() => {});
   }, []);
 
   // ── Carica conversazioni dal server ───────────────────────────────────
@@ -430,6 +446,9 @@ export default function ChatShell({ userName }: ChatShellProps) {
           isMobile={isMobile}
           productName={selectedProduct?.name}
           productChunkCount={selectedProduct?.chunk_count ?? 0}
+          activeModels={activeModels}
+          isAdmin={isAdmin}
+          onModelsUpdate={setActiveModels}
         />
       </div>
 

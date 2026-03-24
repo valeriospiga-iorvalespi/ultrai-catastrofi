@@ -141,6 +141,7 @@ export default function AdminShell() {
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [productMsg, setProductMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [config, setConfig] = useState({ persona: "", domain: "", guardrails: "", language: "" });
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [llmConfig, setLlmConfig] = useState({
     retriever_provider: "anthropic", retriever_model: "claude-sonnet-4-5-20251022", retriever_api_key: "",
     orchestrator_provider: "anthropic", orchestrator_model: "claude-haiku-4-5-20251001", orchestrator_api_key: "",
@@ -184,6 +185,7 @@ export default function AdminShell() {
       if (res.ok) {
         const data = await res.json();
         setConfig({ persona: data.persona ?? "", domain: data.domain ?? "", guardrails: data.guardrails ?? "", language: data.language ?? "" });
+        setSuggestedQuestions(Array.isArray(data.suggested_questions) ? data.suggested_questions : []);
         setLlmConfig({
           retriever_provider:    data.retriever_provider    ?? "anthropic",
           retriever_model:       data.retriever_model       ?? "claude-sonnet-4-5-20251022",
@@ -828,6 +830,52 @@ export default function AdminShell() {
                             color: "#2c3e50", lineHeight: 1.6, resize: "vertical", outline: "none" }} />
                       </div>
                     ))}
+
+                    {/* ── Domande suggerite ── */}
+                    <div style={{ paddingTop: 16, borderTop: "1px solid #e8ecf0" }}>
+                      <label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "#2c3e50", marginBottom: 4 }}>
+                        💬 Domande suggerite
+                      </label>
+                      <p style={{ fontSize: 12, color: "#9aa5b4", marginBottom: 10 }}>
+                        Mostrate nel WelcomeBox della chat. Lascia vuoto per non mostrarne.
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {[...suggestedQuestions, ""].map((q, i) => (
+                          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <input
+                              value={q}
+                              placeholder={`Domanda ${i + 1}…`}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setSuggestedQuestions(prev => {
+                                  const updated = [...prev];
+                                  if (i < prev.length) { updated[i] = val; }
+                                  else if (val.trim()) { updated.push(val); }
+                                  return updated;
+                                });
+                              }}
+                              style={{ flex: 1, border: "1px solid #dde3ec", borderRadius: 6,
+                                padding: "7px 10px", fontSize: 13, color: "#2c3e50",
+                                outline: "none", fontFamily: "inherit" }}
+                            />
+                            {i < suggestedQuestions.length && (
+                              <button
+                                onClick={() => setSuggestedQuestions(prev => prev.filter((_, j) => j !== i))}
+                                title="Rimuovi"
+                                style={{ background: "none", border: "none", color: "#c0392b",
+                                  cursor: "pointer", fontSize: 16, padding: "4px 6px", flexShrink: 0 }}>
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {suggestedQuestions.length > 0 && (
+                        <div style={{ marginTop: 6, fontSize: 11, color: "#9aa5b4" }}>
+                          {suggestedQuestions.length} domanda{suggestedQuestions.length !== 1 ? "e" : ""} configurata{suggestedQuestions.length !== 1 ? "e" : ""}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -855,6 +903,7 @@ export default function AdminShell() {
                         orchestrator_provider: llmConfig.orchestrator_provider,
                         orchestrator_model:    llmConfig.orchestrator_model,
                         orchestrator_api_key:  llmConfig.orchestrator_api_key,
+                        suggested_questions:   suggestedQuestions.filter(q => q.trim() !== ""),
                       }),
                     });
                     const data = await res.json();

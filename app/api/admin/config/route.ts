@@ -43,7 +43,8 @@ export async function GET(req: NextRequest) {
     .select(`
       id, name, short_name, persona, domain, guardrails, language,
       retriever_provider, retriever_model, retriever_api_key_enc,
-      orchestrator_provider, orchestrator_model, orchestrator_api_key_enc
+      orchestrator_provider, orchestrator_model, orchestrator_api_key_enc,
+      suggested_questions
     `)
     .eq('id', productId)
     .single();
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
     ...safe,
     retriever_key_saved,
     orchestrator_key_saved,
+    suggested_questions: data.suggested_questions ?? [],
   });
 }
 
@@ -83,6 +85,8 @@ export async function POST(req: NextRequest) {
     // LLM config
     retriever_provider, retriever_model, retriever_api_key,
     orchestrator_provider, orchestrator_model, orchestrator_api_key,
+    // Domande suggerite
+    suggested_questions,
   } = body;
 
   if (!productId) return NextResponse.json({ error: 'Missing productId' }, { status: 400 });
@@ -92,6 +96,7 @@ export async function POST(req: NextRequest) {
     persona, domain, guardrails, language,
     retriever_provider,   retriever_model,
     orchestrator_provider, orchestrator_model,
+    suggested_questions: Array.isArray(suggested_questions) ? suggested_questions : [],
   };
 
   // Only update key if a new non-empty value was provided

@@ -37,6 +37,8 @@ interface ChatAreaProps {
   isMobile?: boolean;
   productName?: string;
   productChunkCount?: number;
+  productLastFileName?: string | null;
+  productSuggestedQuestions?: string[];
   activeModels?: ModelsInfo | null;
   isAdmin?: boolean;
   onModelsUpdate?: (models: ModelsInfo) => void;
@@ -47,18 +49,13 @@ interface ChatAreaProps {
 interface WelcomeBoxProps {
   productName: string;
   chunkCount: number;
+  lastFileName?: string | null;
+  suggestedQuestions?: string[];
   isMobile: boolean;
   onSelectQuestion: (q: string) => void;
 }
 
-function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: WelcomeBoxProps) {
-  const DOMANDE = [
-    "Cosa copre la garanzia alluvione?",
-    "Qual è la franchigia per terremoto?",
-    "Come si denuncia un sinistro?",
-    "Sono escluse le inondazioni costiere?",
-  ];
-
+function WelcomeBox({ productName, chunkCount, lastFileName, suggestedQuestions = [], isMobile, onSelectQuestion }: WelcomeBoxProps) {
   return (
     <div style={{ background: "#e8f0fb", borderRadius: 10,
       padding: isMobile ? "14px 16px" : "18px 22px", marginBottom: 24, maxWidth: 720 }}>
@@ -72,7 +69,6 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
           </svg>
         </div>
         <div>
-          {/* ✅ Nome prodotto dinamico */}
           <div style={{ fontWeight: 700, fontSize: isMobile ? 14 : 15, color: "#003781" }}>
             UltrAI — {productName}
           </div>
@@ -85,8 +81,21 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
         Posso aiutarti a rispondere a domande sulla polizza{" "}
         <strong>{productName}</strong> di Allianz: garanzie, massimali, franchigie,
         procedure di sinistro ed esclusioni. Le risposte si basano esclusivamente
-        sulla documentazione di prodotto ufficiale.
+        sulla documentazione di prodotto ufficiale{lastFileName ? ":" : "."}
       </p>
+
+      {/* Elenco documenti caricati */}
+      {lastFileName && (
+        <div style={{ marginBottom: 12 }}>
+          <ul style={{ margin: "4px 0 0 0", padding: "0 0 0 18px" }}>
+            {lastFileName.split(";").map((f, i) => (
+              <li key={i} style={{ fontSize: 12.5, color: "#2c3e50", lineHeight: 1.6 }}>
+                {f.replace(/^\d+_/, "").replace(/\.(docx|md|pdf)$/i, "").replace(/_/g, " ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Avviso */}
       <div style={{ background: "#fff3cd", border: "1px solid #ffc107", borderRadius: 6,
@@ -96,7 +105,7 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
         <span>Le risposte hanno scopo informativo. In caso di sinistro riferirsi sempre alle Condizioni di Assicurazione in vigore.</span>
       </div>
 
-      {/* ✅ Fonti dinamiche */}
+      {/* Fonti dinamiche */}
       {!isMobile && chunkCount > 0 && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "#5a6a85", marginBottom: 4,
@@ -109,10 +118,10 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
         </div>
       )}
 
-      {/* Domande suggerite — solo se KB caricata */}
-      {chunkCount > 0 ? (
+      {/* Domande suggerite — solo se configurate e KB caricata */}
+      {chunkCount > 0 && suggestedQuestions.length > 0 ? (
         <div style={{ marginTop: isMobile ? 8 : 14, display: "flex", flexWrap: "wrap", gap: 7 }}>
-          {(isMobile ? DOMANDE.slice(0, 2) : DOMANDE).map(q => (
+          {(isMobile ? suggestedQuestions.slice(0, 2) : suggestedQuestions).map(q => (
             <button key={q} onClick={() => onSelectQuestion(q)}
               style={{ background: "#fff", border: "1px solid #b8c9e8", borderRadius: 20,
                 padding: isMobile ? "6px 14px" : "5px 12px",
@@ -123,14 +132,14 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
             </button>
           ))}
         </div>
-      ) : (
+      ) : chunkCount === 0 ? (
         <div style={{ marginTop: isMobile ? 8 : 14, display: "flex", alignItems: "center", gap: 6,
           background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8,
           padding: "8px 12px", fontSize: 12, color: "#7c6200" }}>
           <span>📂</span>
           <span>Nessuna documentazione caricata per questo prodotto. Carica la KB dal pannello Admin per iniziare.</span>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -434,6 +443,7 @@ function UserBubble({ message, isMobile }: { message: Message; isMobile?: boolea
 export default function ChatArea({
   productId, conversationId, onConversationUpdate, onNewConversation,
   isMobile = false, productName = "Prodotto", productChunkCount = 0,
+  productLastFileName = null, productSuggestedQuestions = [],
   activeModels = null, isAdmin = false, onModelsUpdate,
 }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -646,6 +656,8 @@ export default function ChatArea({
               <WelcomeBox
                 productName={productName}
                 chunkCount={productChunkCount}
+                lastFileName={productLastFileName}
+                suggestedQuestions={productSuggestedQuestions}
                 isMobile={isMobile}
                 onSelectQuestion={setInputText}
               />

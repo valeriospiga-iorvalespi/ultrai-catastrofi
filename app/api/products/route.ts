@@ -26,8 +26,8 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, short_name, chunk_count")
-    .eq("active", true)          // ← solo prodotti attivi
+    .select("id, name, short_name, chunk_count, last_file_name, suggested_questions")
+    .eq("active", true)
     .order("name");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

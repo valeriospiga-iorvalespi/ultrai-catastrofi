@@ -150,6 +150,8 @@ export default function AdminShell() {
   const [configLoading, setConfigLoading] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
   const [configMsg, setConfigMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copyFromId, setCopyFromId] = useState("");
+  const [copying, setCopying] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -197,8 +199,28 @@ export default function AdminShell() {
     finally { setConfigLoading(false); }
   }, []);
 
-  useEffect(() => { fetchProducts(); }, []);
-  useEffect(() => {
+  const handleCopyPersonality = async (sourceId: string) => {
+    if (!sourceId || sourceId === configProductId) return;
+    setCopying(true);
+    try {
+      const res = await fetch(`/api/admin/config?productId=${sourceId}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setConfig({
+        persona:    data.persona    ?? "",
+        domain:     data.domain     ?? "",
+        guardrails: data.guardrails ?? "",
+        language:   data.language   ?? "",
+      });
+      const sourceName = products.find(p => p.id === sourceId)?.name ?? "prodotto";
+      setConfigMsg({ ok: true, text: `Personalità copiata da "${sourceName}". Salva per confermare.` });
+    } catch {
+      setConfigMsg({ ok: false, text: "Impossibile caricare la configurazione sorgente." });
+    } finally {
+      setCopying(false);
+      setCopyFromId("");
+    }
+  };
     if (tab === "chunks") fetchChunks(filterProduct);
     if (tab === "products") fetchProducts();
     if (tab === "config" && configProductId) fetchConfig(configProductId);
@@ -749,7 +771,42 @@ export default function AdminShell() {
 
                 {/* ── Sezione Personalità ── */}
                 <div style={{ border: "1px solid #e8ecf0", borderRadius: 10, padding: "16px 18px" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#003781", marginBottom: 14 }}>🎭 Personalità e dominio</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                    flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#003781" }}>🎭 Personalità e dominio</div>
+                    {/* Copia da altro prodotto */}
+                    {products.filter(p => p.id !== configProductId).length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <select
+                          value={copyFromId}
+                          onChange={(e) => setCopyFromId(e.target.value)}
+                          style={{ border: "1px solid #d1d9e0", borderRadius: 6, padding: "5px 8px",
+                            fontSize: 12, color: "#5a6a85", background: "#f8fafd", outline: "none",
+                            maxWidth: 180 }}>
+                          <option value="">— Copia da prodotto…</option>
+                          {products
+                            .filter(p => p.id !== configProductId)
+                            .map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.short_name ? `${p.name} (${p.short_name})` : p.name}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          onClick={() => handleCopyPersonality(copyFromId)}
+                          disabled={!copyFromId || copying}
+                          title="Copia persona, dominio, guardrails e lingua nel form corrente"
+                          style={{ background: !copyFromId || copying ? "#c8d4e8" : "#e8f0fb",
+                            border: "1px solid #c5d8f5", borderRadius: 6,
+                            padding: "5px 10px", fontSize: 12, fontWeight: 600,
+                            color: !copyFromId || copying ? "#fff" : "#003781",
+                            cursor: !copyFromId || copying ? "not-allowed" : "pointer",
+                            whiteSpace: "nowrap" }}>
+                          {copying ? "…" : "📋 Copia"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {[
                       { key: "persona" as const,    label: "Persona",            hint: "Ruolo e tono.",                   rows: 4 },

@@ -103,19 +103,28 @@ function WelcomeBox({ productName, chunkCount, isMobile, onSelectQuestion }: Wel
         </div>
       )}
 
-      {/* Domande suggerite */}
-      <div style={{ marginTop: isMobile ? 8 : 14, display: "flex", flexWrap: "wrap", gap: 7 }}>
-        {(isMobile ? DOMANDE.slice(0, 2) : DOMANDE).map(q => (
-          <button key={q} onClick={() => onSelectQuestion(q)}
-            style={{ background: "#fff", border: "1px solid #b8c9e8", borderRadius: 20,
-              padding: isMobile ? "6px 14px" : "5px 12px",
-              fontSize: isMobile ? 13 : 12.5, color: "#003781", cursor: "pointer" }}
-            onMouseEnter={e => ((e.target as HTMLButtonElement).style.background = "#d8e6f8")}
-            onMouseLeave={e => ((e.target as HTMLButtonElement).style.background = "#fff")}>
-            {q}
-          </button>
-        ))}
-      </div>
+      {/* Domande suggerite — solo se KB caricata */}
+      {chunkCount > 0 ? (
+        <div style={{ marginTop: isMobile ? 8 : 14, display: "flex", flexWrap: "wrap", gap: 7 }}>
+          {(isMobile ? DOMANDE.slice(0, 2) : DOMANDE).map(q => (
+            <button key={q} onClick={() => onSelectQuestion(q)}
+              style={{ background: "#fff", border: "1px solid #b8c9e8", borderRadius: 20,
+                padding: isMobile ? "6px 14px" : "5px 12px",
+                fontSize: isMobile ? 13 : 12.5, color: "#003781", cursor: "pointer" }}
+              onMouseEnter={e => ((e.target as HTMLButtonElement).style.background = "#d8e6f8")}
+              onMouseLeave={e => ((e.target as HTMLButtonElement).style.background = "#fff")}>
+              {q}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ marginTop: isMobile ? 8 : 14, display: "flex", alignItems: "center", gap: 6,
+          background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8,
+          padding: "8px 12px", fontSize: 12, color: "#7c6200" }}>
+          <span>📂</span>
+          <span>Nessuna documentazione caricata per questo prodotto. Carica la KB dal pannello Admin per iniziare.</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -245,12 +245,12 @@ export default function ChatShell({ userName }: ChatShellProps) {
               value={selectedProductId}
               onChange={e => {
                 setSelectedProductId(e.target.value);
-                // Crea nuova chat sul prodotto selezionato
                 setActiveConvId(null);
               }}
-              style={{ border: "1px solid #d1d9e0", borderRadius: 6, padding: "4px 8px",
-                fontSize: 12, color: "#003781", background: "#f0f6ff", outline: "none",
-                cursor: "pointer", maxWidth: isMobile ? 120 : 200 }}>
+              style={{ border: "1.5px solid #003781", borderRadius: 6,
+                padding: "5px 10px", fontSize: 13, fontWeight: 600,
+                color: "#003781", background: "#e8f0fb", outline: "none",
+                cursor: "pointer", maxWidth: isMobile ? 130 : 220 }}>
               {products.map(p => (
                 <option key={p.id} value={p.id}>{p.short_name ?? p.name}</option>
               ))}
@@ -355,7 +355,10 @@ export default function ChatShell({ userName }: ChatShellProps) {
               <div key={group.label} style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "#9aa5b4", textTransform: "uppercase",
                   letterSpacing: "0.05em", padding: "6px 6px 4px" }}>{group.label}</div>
-                {group.items.map(conv => (
+                {group.items.map(conv => {
+                  const convProduct = products.find(p => p.id === conv.product_id);
+                  const productLabel = convProduct?.short_name ?? convProduct?.name;
+                  return (
                   <div key={conv.id}
                     onMouseEnter={() => setHoveredConvId(conv.id)}
                     onMouseLeave={() => setHoveredConvId(null)}
@@ -363,14 +366,25 @@ export default function ChatShell({ userName }: ChatShellProps) {
                       background: activeConvId === conv.id ? "#f0f0f0" : "transparent" }}>
                     <button onClick={() => handleSelect(conv)} title={conv.title}
                       style={{ flex: 1, background: "none", border: "none",
-                        padding: `8px 10px 8px 10px`,
+                        padding: `6px 10px 6px 10px`,
                         paddingRight: hoveredConvId === conv.id ? 32 : 10,
-                        textAlign: "left", cursor: "pointer", fontSize: 13,
+                        textAlign: "left", cursor: "pointer",
+                        color: "#2c3e50", display: "block", overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                        <span style={{ opacity: 0.5, fontSize: 12 }}>💬</span>
+                        {productLabel && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: "#fff",
+                            background: "#003781", borderRadius: 3, padding: "1px 5px",
+                            flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                            {productLabel}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 13,
                         fontWeight: activeConvId === conv.id ? 500 : 400,
-                        color: "#2c3e50", whiteSpace: "nowrap", overflow: "hidden",
-                        textOverflow: "ellipsis", display: "block" }}>
-                      <span style={{ marginRight: 6, opacity: 0.5 }}>💬</span>
-                      {conv.title}
+                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {conv.title}
+                      </div>
                     </button>
                     {hoveredConvId === conv.id && (
                       <button onClick={e => { e.stopPropagation(); handleDelete(conv.id); }}
@@ -384,7 +398,8 @@ export default function ChatShell({ userName }: ChatShellProps) {
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
           </div>
